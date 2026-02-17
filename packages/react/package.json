@@ -1,0 +1,23 @@
+{
+  "name": "@quellix/react",
+  "version": "0.0.1",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch"
+  },
+  "dependencies": {
+    "@quellix/types": "workspace:*"
+  },
+  "devDependencies": {
+    "tsup": "^8.5.1"
+  }
+}

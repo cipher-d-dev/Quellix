@@ -1,0 +1,49 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Build outputs
+dist
+build
+.next
+.remix
+out
+
+# Turbo
+.turbo
+
+# Environment variables
+.env
+.env.local
+.env.development
+.env.staging
+.env.production
+
+# Logs
+logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# Testing
+coverage
+.nyc_output
+
+# TypeScript
+*.tsbuildinfo
+
+# Misc
+*.pem
+.cache
