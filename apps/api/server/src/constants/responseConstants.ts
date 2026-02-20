@@ -9,8 +9,8 @@ const baseHTMLResponse = `
         href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap"
         rel="stylesheet"
         />
-        <link rel="icon" type="image/x-icon" href="https://github.com/cipher-d-dev/Quellix/blob/94961e37b74d844f31bba64b55f1f6c26c44b50c/apps/api/public/assets/favicon.png" />
-        <style>
+        <link rel="shortcut icon" href="https://github.com/cipher-d-dev/Quellix/blob/94961e37b74d844f31bba64b55f1f6c26c44b50c/apps/api/public/assets/favicon-solid.png" type="image/x-icon">
+    <style>
         * {
             margin: 0;
             padding: 0;
