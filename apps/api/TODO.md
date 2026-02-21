@@ -1,0 +1,1 @@
+## Remove console logs from config/db.ts

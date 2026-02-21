@@ -1,0 +1,269 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Developer {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  username      String?   @unique
+  passwordHash  String   @map("password_hash")
+  fullName      String?  @map("first_name")
+  emailVerified Boolean  @default(false) @map("email_verified")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  projects Project[]
+
+  @@map("developers")
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  developerId String   @map("developer_id")
+  name        String
+  slug        String   @unique // for custom domains later
+  logoUrl     String?  @map("logo_url")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  developer     Developer      @relation(fields: [developerId], references: [id], onDelete: Cascade)
+  apiKeys       ApiKey[]
+  endUsers      EndUser[]
+  organizations Organization[]
+  webhooks      Webhook[]
+
+  @@index([developerId])
+  @@map("projects")
+}
+
+model ApiKey {
+  id         String     @id @default(cuid())
+  projectId  String     @map("project_id")
+  name       String // "Production", "Development", etc.
+  keyHash    String     @unique @map("key_hash") // hashed version of the actual key
+  keyPrefix  String     @map("key_prefix") // "qlx_live_abc" — shown to user for identification
+  type       ApiKeyType @default(PUBLISHABLE)
+  lastUsedAt DateTime?  @map("last_used_at")
+  expiresAt  DateTime?  @map("expires_at")
+  createdAt  DateTime   @default(now()) @map("created_at")
+  revokedAt  DateTime?  @map("revoked_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([keyHash])
+  @@map("api_keys")
+}
+
+enum ApiKeyType {
+  PUBLISHABLE // For frontend SDK
+  SECRET // For backend operations
+}
+
+// ============================================================
+// END USER LAYER — The actual users of developer's apps
+// ============================================================
+
+model EndUser {
+  id               String    @id @default(cuid())
+  projectId        String    @map("project_id")
+  email            String
+  passwordHash     String?   @map("password_hash") // nullable for social-only accounts
+  firstName        String?   @map("first_name")
+  lastName         String?   @map("last_name")
+  profileImageUrl  String?   @map("profile_image_url")
+  emailVerified    Boolean   @default(false) @map("email_verified")
+  twoFactorEnabled Boolean   @default(false) @map("two_factor_enabled")
+  banned           Boolean   @default(false)
+  lastSignInAt     DateTime? @map("last_sign_in_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  project              Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sessions             Session[]
+  socialAccounts       SocialAccount[]
+  twoFactorBackupCodes TwoFactorBackupCode[]
+  organizationMembers  OrganizationMember[]
+  verificationTokens   VerificationToken[]
+
+  @@unique([projectId, email]) // Email unique per project
+  @@index([projectId])
+  @@index([email])
+  @@map("end_users")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  endUserId    String   @map("end_user_id")
+  token        String   @unique // JWT or session ID
+  refreshToken String?  @unique @map("refresh_token")
+  ipAddress    String?  @map("ip_address")
+  userAgent    String?  @map("user_agent")
+  expiresAt    DateTime @map("expires_at")
+  lastActiveAt DateTime @default(now()) @map("last_active_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  endUser EndUser @relation(fields: [endUserId], references: [id], onDelete: Cascade)
+
+  @@index([endUserId])
+  @@index([token])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model SocialAccount {
+  id             String    @id @default(cuid())
+  endUserId      String    @map("end_user_id")
+  provider       String // "google", "github", etc.
+  providerUserId String    @map("provider_user_id")
+  email          String?
+  accessToken    String?   @map("access_token")
+  refreshToken   String?   @map("refresh_token")
+  expiresAt      DateTime? @map("expires_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  endUser EndUser @relation(fields: [endUserId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@index([endUserId])
+  @@map("social_accounts")
+}
+
+model TwoFactorBackupCode {
+  id        String    @id @default(cuid())
+  endUserId String    @map("end_user_id")
+  codeHash  String    @map("code_hash")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  endUser EndUser @relation(fields: [endUserId], references: [id], onDelete: Cascade)
+
+  @@index([endUserId])
+  @@map("two_factor_backup_codes")
+}
+
+model VerificationToken {
+  id        String    @id @default(cuid())
+  endUserId String    @map("end_user_id")
+  token     String    @unique
+  type      TokenType
+  expiresAt DateTime  @map("expires_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  endUser EndUser @relation(fields: [endUserId], references: [id], onDelete: Cascade)
+
+  @@index([endUserId])
+  @@index([token])
+  @@map("verification_tokens")
+}
+
+enum TokenType {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+  TWO_FACTOR
+}
+
+// ============================================================
+// ORGANIZATIONS & MULTI-TENANCY
+// ============================================================
+
+model Organization {
+  id        String   @id @default(cuid())
+  projectId String   @map("project_id")
+  name      String
+  slug      String   @unique
+  logoUrl   String?  @map("logo_url")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  project Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  members OrganizationMember[]
+  invites OrganizationInvite[]
+
+  @@index([projectId])
+  @@map("organizations")
+}
+
+model OrganizationMember {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  endUserId      String   @map("end_user_id")
+  role           String   @default("member") // "admin", "member", custom roles
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  endUser      EndUser      @relation(fields: [endUserId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, endUserId])
+  @@index([organizationId])
+  @@index([endUserId])
+  @@map("organization_members")
+}
+
+model OrganizationInvite {
+  id             String    @id @default(cuid())
+  organizationId String    @map("organization_id")
+  email          String
+  role           String    @default("member")
+  token          String    @unique
+  expiresAt      DateTime  @map("expires_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  acceptedAt     DateTime? @map("accepted_at")
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([token])
+  @@map("organization_invites")
+}
+
+// ============================================================
+// WEBHOOKS & EVENTS
+// ============================================================
+
+model Webhook {
+  id        String   @id @default(cuid())
+  projectId String   @map("project_id")
+  url       String
+  events    String[] // ["user.created", "session.ended", etc.]
+  secret    String // For signature verification
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  project  Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  attempts WebhookAttempt[]
+
+  @@index([projectId])
+  @@map("webhooks")
+}
+
+model WebhookAttempt {
+  id          String    @id @default(cuid())
+  webhookId   String    @map("webhook_id")
+  event       String
+  payload     Json
+  statusCode  Int?      @map("status_code")
+  response    String?
+  succeededAt DateTime? @map("succeeded_at")
+  failedAt    DateTime? @map("failed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  webhook Webhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@index([webhookId])
+  @@index([createdAt])
+  @@map("webhook_attempts")
+}
