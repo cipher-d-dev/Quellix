@@ -5,108 +5,161 @@ import { randomBytes } from "crypto";
 import { generateToken } from "../utils/generateToken.ts";
 
 const register = async (req: express.Request, res: express.Response) => {
-  const { email, password, fullName, username } = req.body;
+  try {
+    const { email, password, fullName, username } = req.body;
 
-  const developerExists = await prisma.developer.findUnique({
-    where: { email: email },
-  });
-
-  const usernameTaken = await prisma.developer.findFirst({
-    where: { username: username },
-  });
-
-  //   Check if user exists
-  if (developerExists) {
-    return res.status(400).json({
-      error: "Looks like this email is already taken",
+    // Check if email exists
+    const developerExists = await prisma.developer.findUnique({
+      where: { email },
     });
-  }
-  //   Check is username is taken
-  if (usernameTaken) {
-    const newUsername = `${fullName.trim().toLowerCase()}${Math.floor(Math.random() * 10)}${randomBytes(2).toString("hex").slice(0, 3)}`;
 
-    return res.status(400).json({
-      error: `${username} is unavailable, try ${newUsername}`,
-    });
-  }
+    if (developerExists) {
+      return res.status(400).json({
+        success: false,
+        error: "Looks like this email is already taken",
+      });
+    }
 
-  //   Hash developer password
-  const passwordHash = await argon2.hash(password);
+    // Check if username is taken (only if username was provided)
+    if (username) {
+      const usernameTaken = await prisma.developer.findUnique({
+        where: { username },
+      });
 
-  //   Create Developer
-  const developer = await prisma.developer.create({
-    data: { fullName, email, passwordHash, username },
-  });
+      if (usernameTaken) {
+        // Use fullName if available, otherwise use email prefix
+        const base = fullName?.trim() || email.split("@")[0];
+        const newUsername = `${base.toLowerCase().replace(/\s+/g, "")}${Math.floor(Math.random() * 1000)}${randomBytes(2).toString("hex").slice(0, 3)}`;
 
-  // Generate JWT token
-  const token = generateToken(developer.id, res);
+        return res.status(400).json({
+          success: false,
+          error: `${username} is unavailable, try ${newUsername}`,
+        });
+      }
+    }
 
-  return res.status(201).json({
-    status: "success",
-    data: {
-      developer: {
-        id: developer.id,
-        fullName: developer.fullName,
-        email: developer.email,
-        username: developer.username,
+    // Hash developer password
+    const passwordHash = await argon2.hash(password);
+
+    // Create Developer
+    const developer = await prisma.developer.create({
+      data: {
+        fullName: fullName || null,
+        email,
+        passwordHash,
+        username: username || null,
+        emailVerified: false, // Will be set to true after email verification
       },
-    },
-    token
-  });
+    });
+
+    // Generate JWT token and set cookie
+    generateToken(developer.id, res);
+
+    return res.status(201).json({
+      success: true,
+      message:
+        "Account created successfully! Please check your email to verify your account.",
+      data: {
+        developer: {
+          id: developer.id,
+          fullName: developer.fullName,
+          email: developer.email,
+          username: developer.username,
+          emailVerified: developer.emailVerified,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Registration error:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Something went wrong during registration. Please try again.",
+    });
+  }
 };
 
 const login = async (req: express.Request, res: express.Response) => {
-  const { email, password } = req.body;
-  const key = email.includes("@") ? "email" : "username";
+  try {
+    const { email, password } = req.body;
 
-  // Check if developer exists
-  const developerExists = await prisma.developer.findUnique({
-    where: email.includes("@") ? { email } : { username: email },
-  });
-
-  if (!developerExists) {
-    return res.status(401).json({
-      error: `Invalid ${key} or password`,
+    // Check if developer exists
+    const developer = await prisma.developer.findUnique({
+      where: { email },
     });
-  }
 
-  // Verify password
-  const isPasswordValid = await argon2.verify(
-    developerExists.passwordHash,
-    password,
-  );
+    if (!developer) {
+      return res.status(401).json({
+        success: false,
+        error: "Invalid email or password",
+      });
+    }
 
-  if (!isPasswordValid) {
-    return res.status(401).json({
-      error: `Invalid ${key} or password`,
-    });
-  }
+    // Verify password
+    const isPasswordValid = await argon2.verify(
+      developer.passwordHash,
+      password,
+    );
 
-  // Generate JWT token
-  const token = generateToken(developerExists.id, res);
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        success: false,
+        error: "Invalid email or password",
+      });
+    }
 
-  res.status(200).json({
-    status: "success",
-    data: {
-      developer: {
-        id: developerExists.id,
-        email: developerExists.email,
+    // Optional: Block unverified users from logging in
+    // Uncomment if you want to enforce email verification
+    // if (!developer.emailVerified) {
+    //   return res.status(403).json({
+    //     success: false,
+    //     error: "Please verify your email before logging in"
+    //   })
+    // }
+
+    // Generate JWT token and set cookie
+    generateToken(developer.id, res);
+
+    return res.status(200).json({
+      success: true,
+      message: "Logged in successfully",
+      data: {
+        developer: {
+          id: developer.id,
+          fullName: developer.fullName,
+          email: developer.email,
+          username: developer.username,
+          emailVerified: developer.emailVerified,
+        },
       },
-    },
-    token
-  });
+    });
+  } catch (error) {
+    console.error("Login error:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Something went wrong during login. Please try again.",
+    });
+  }
 };
 
 const logout = (req: express.Request, res: express.Response) => {
-  res.clearCookie("jwt", {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
-  });
-  res.status(200).json({
-    status: "success",
-    message: "Logged out successfully",
-  });
+  try {
+    res.clearCookie("jwt", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Logged out successfully",
+    });
+  } catch (error) {
+    console.error("Logout error:", error);
+    return res.status(500).json({
+      success: false,
+      error: "Something went wrong during logout. Please try again.",
+    });
+  }
 };
 
 export { register, login, logout };

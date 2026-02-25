@@ -11,4 +11,7 @@ router.post("/register", validateBody(developerSignupSchema), register);
 router.post("/login", validateBody(developerSigninSchema), login);
 router.post("/logout", logout);
 
+// Email verification and password reset routes
+// router.post("/verify-email")
+
 export default router;

@@ -17,7 +17,7 @@ model Developer {
   email         String   @unique
   username      String?   @unique
   passwordHash  String   @map("password_hash")
-  fullName      String?  @map("first_name")
+  fullName      String?  @map("full_name")
   emailVerified Boolean  @default(false) @map("email_verified")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
