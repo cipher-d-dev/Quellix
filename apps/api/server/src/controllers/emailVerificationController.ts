@@ -1,122 +1,157 @@
-import express from "express";
-import { prisma } from "../config/db";
+import type { Request, Response } from "express";
+import { prisma } from "../config/db.ts";
 import {
   generateVerificationCode,
   sendVerificationCode,
 } from "../utils/mailer.ts";
 
-/**
- * Send verification code after registration
- * Called internally by register function
- */
+// ---------------------------------------------------------------------------
+// Internal helper — called by the register controller after account creation.
+// Non-throwing: a mail failure must never block registration.
+// ---------------------------------------------------------------------------
+
 export async function sendEmailVerification(
-  developerId: string,
+  type: "developer" | "endUser",
+  subjectId: string,
   email: string,
-) {
+  options?: { appName?: string },
+): Promise<{ success: boolean }> {
   try {
-    // Generate 6-digit code
-    const code = generateVerificationCode();
+    const code = generateVerificationCode(); // 8-char alphanumeric
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
- 
-    // Delete any existing verification codes for this developer
+
+    const ownerClause =
+      type === "developer"
+        ? { developerId: subjectId }
+        : { endUserId: subjectId };
+
+    // Rotate: remove any outstanding code for this subject first
     await prisma.verificationToken.deleteMany({
-      where: {
-        endUserId: developerId,
-        type: "EMAIL_VERIFICATION",
-      },
+      where: { ...ownerClause, type: "EMAIL_VERIFICATION" },
     });
 
-    // Store code in database
     await prisma.verificationToken.create({
       data: {
-        endUserId: developerId,
+        ...ownerClause,
         token: code,
         type: "EMAIL_VERIFICATION",
         expiresAt,
       },
     });
 
-    // Send email (non-blocking - don't throw on error)
-    await sendVerificationCode(email, code);
+    await sendVerificationCode(type, email, code, options);
 
     return { success: true };
   } catch (error) {
-    console.error("Failed to send verification code:", error);
-    // Don't throw - we don't want to block registration if email fails
+    console.error(`Failed to send ${type} verification code:`, error);
     return { success: false };
   }
 }
 
-/**
- * POST /auth/verify-email
- * Verify email with 6-digit code
- */
-export async function verifyEmail(req: express.Request, res: express.Response) {
+// ---------------------------------------------------------------------------
+// POST /auth/verify-email
+//
+// Body (developer):  { type: "developer"; email: string; code: string }
+// Body (end user):   { type: "endUser";   email: string; code: string; projectId: string }
+// ---------------------------------------------------------------------------
+
+export async function verifyEmail(req: Request, res: Response) {
   try {
-    const { code } = req.body;
+    const { type, email, code, projectId } = req.body;
 
-    if (!code) {
+    if (!type || !email || !code) {
       return res.status(400).json({
         success: false,
-        error: "Verification code is required",
+        error: "type, email, and code are required.",
       });
     }
 
-    // Normalize code (remove spaces, convert to string)
+    if (type !== "developer" && type !== "endUser") {
+      return res.status(400).json({
+        success: false,
+        error: "type must be 'developer' or 'endUser'.",
+      });
+    }
+
+    if (type === "endUser" && !projectId) {
+      return res.status(400).json({
+        success: false,
+        error: "projectId is required for end user verification.",
+      });
+    }
+
     const normalizedCode = code.toString().replace(/\s/g, "");
+    const normalizedEmail = email.toString().toLowerCase().trim();
 
-    if (normalizedCode.length !== 6 || !/^\d{6}$/.test(normalizedCode)) {
+    // 8-character alphanumeric — matches generateVerificationCode output
+    if (
+      normalizedCode.length !== 8 ||
+      !/^[A-Za-z0-9]{8}$/.test(normalizedCode)
+    ) {
       return res.status(400).json({
         success: false,
-        error: "Invalid code format. Please enter a 6-digit code.",
+        error:
+          "Invalid code format. Please paste the code exactly as it appeared in your email.",
       });
     }
 
-    // Find verification token
+    const subject = await resolveSubject(type, normalizedEmail, projectId);
+
+    if (!subject) {
+      return res.status(404).json({
+        success: false,
+        error: "No account found with that email address.",
+      });
+    }
+
+    if (subject.emailVerified) {
+      return res.status(400).json({
+        success: false,
+        error: "This email is already verified.",
+      });
+    }
+
+    const ownerClause =
+      type === "developer"
+        ? { developerId: subject.id }
+        : { endUserId: subject.id };
+
+    // Scoped to this subject — a code for a different account will not match
     const verificationToken = await prisma.verificationToken.findFirst({
       where: {
+        ...ownerClause,
         token: normalizedCode,
         type: "EMAIL_VERIFICATION",
-      },
-      include: {
-        endUser: true,
       },
     });
 
     if (!verificationToken) {
       return res.status(400).json({
         success: false,
-        error: "Invalid verification code",
+        error: "Invalid verification code.",
       });
     }
 
-    // Check if code expired
     if (verificationToken.expiresAt < new Date()) {
-      // Delete expired token
       await prisma.verificationToken.delete({
         where: { id: verificationToken.id },
       });
 
       return res.status(400).json({
         success: false,
-        error: "Verification code has expired. Please request a new one.",
+        error: "That code has expired. Request a new one and try again.",
       });
     }
 
-    // Update developer email verification status
-    await prisma.developer.update({
-      where: { id: verificationToken.endUserId },
-      data: { emailVerified: true },
-    });
-
-    // Delete used token
-    await prisma.verificationToken.delete({
-      where: { id: verificationToken.id },
-    });
+    // Mark verified and clean up the token atomically
+    await prisma.$transaction([
+      markVerified(type, subject.id),
+      prisma.verificationToken.delete({ where: { id: verificationToken.id } }),
+    ]);
 
     return res.status(200).json({
       success: true,
-      message: "Email verified successfully! You can now access all features.",
+      message: "Email verified successfully. You now have full access.",
     });
   } catch (error) {
     console.error("Email verification error:", error);
@@ -127,69 +162,86 @@ export async function verifyEmail(req: express.Request, res: express.Response) {
   }
 }
 
-/**
- * POST /auth/resend-verification
- * Resend verification code
- */
-export async function resendVerification(
-  req: express.Request,
-  res: express.Response,
-) {
-  try {
-    const { email } = req.body;
+// ---------------------------------------------------------------------------
+// POST /auth/resend-verification
+//
+// Body (developer):  { type: "developer"; email: string }
+// Body (end user):   { type: "endUser";   email: string; projectId: string; appName?: string }
+// ---------------------------------------------------------------------------
 
-    if (!email) {
+export async function resendVerification(req: Request, res: Response) {
+  try {
+    const { type, email, projectId, appName } = req.body;
+
+    if (!type || !email) {
       return res.status(400).json({
         success: false,
-        error: "Email is required",
+        error: "type and email are required.",
       });
     }
 
-    // Find developer
-    const developer = await prisma.developer.findUnique({
-      where: { email: email.toLowerCase().trim() },
-    });
+    if (type !== "developer" && type !== "endUser") {
+      return res.status(400).json({
+        success: false,
+        error: "type must be 'developer' or 'endUser'.",
+      });
+    }
 
-    if (!developer) {
-      // Don't reveal if email exists or not (security best practice)
+    if (type === "endUser" && !projectId) {
+      return res.status(400).json({
+        success: false,
+        error: "projectId is required for end user verification.",
+      });
+    }
+
+    const normalizedEmail = email.toString().toLowerCase().trim();
+    const subject = await resolveSubject(type, normalizedEmail, projectId);
+
+    // Respond identically whether the account exists or not — prevents email enumeration
+    if (!subject) {
       return res.status(200).json({
         success: true,
-        message: "If that email exists, we've sent a new verification code.",
+        message:
+          "If that email is registered, a new verification code has been sent.",
       });
     }
 
-    // Check if already verified
-    if (developer.emailVerified) {
+    if (subject.emailVerified) {
       return res.status(400).json({
         success: false,
-        error: "This email is already verified",
+        error: "This email is already verified.",
       });
     }
 
-    // Check rate limiting (prevent spam)
+    // Rate-limit: one request per 60 seconds
+    const ownerClause =
+      type === "developer"
+        ? { developerId: subject.id }
+        : { endUserId: subject.id };
+
     const recentToken = await prisma.verificationToken.findFirst({
       where: {
-        endUserId: developer.id,
+        ...ownerClause,
         type: "EMAIL_VERIFICATION",
-        createdAt: {
-          gte: new Date(Date.now() - 60 * 1000), // Within last 60 seconds
-        },
+        createdAt: { gte: new Date(Date.now() - 60 * 1000) },
       },
     });
 
     if (recentToken) {
+      const secondsLeft = Math.ceil(
+        (recentToken.createdAt.getTime() + 60_000 - Date.now()) / 1000,
+      );
       return res.status(429).json({
         success: false,
-        error: "Please wait 60 seconds before requesting a new code",
+        error: `Please wait ${secondsLeft} second${secondsLeft !== 1 ? "s" : ""} before requesting a new code.`,
       });
     }
 
-    // Send new verification code
-    await sendEmailVerification(developer.id, developer.email);
+    await sendEmailVerification(type, subject.id, subject.email, { appName });
 
     return res.status(200).json({
       success: true,
-      message: "Verification code sent! Check your email.",
+      message: "Verification code sent. Check your email.",
     });
   } catch (error) {
     console.error("Resend verification error:", error);
@@ -200,11 +252,45 @@ export async function resendVerification(
   }
 }
 
-/**
- * Helper: Format remaining time for rate limit errors
- */
-function formatRemainingTime(seconds: number): string {
-  if (seconds < 60) return `${seconds} seconds`;
-  const minutes = Math.ceil(seconds / 60);
-  return `${minutes} minute${minutes > 1 ? "s" : ""}`;
+// ---------------------------------------------------------------------------
+// Private helpers
+// ---------------------------------------------------------------------------
+
+interface VerificationSubject {
+  id: string;
+  email: string;
+  emailVerified: boolean;
+}
+
+async function resolveSubject(
+  type: "developer" | "endUser",
+  email: string,
+  projectId?: string,
+): Promise<VerificationSubject | null> {
+  if (type === "developer") {
+    return prisma.developer.findUnique({
+      where: { email },
+      select: { id: true, email: true, emailVerified: true },
+    });
+  }
+
+  if (!projectId) return null;
+
+  return prisma.endUser.findUnique({
+    where: { projectId_email: { projectId, email } },
+    select: { id: true, email: true, emailVerified: true },
+  });
+}
+
+function markVerified(type: "developer" | "endUser", id: string) {
+  if (type === "developer") {
+    return prisma.developer.update({
+      where: { id },
+      data: { emailVerified: true },
+    });
+  }
+  return prisma.endUser.update({
+    where: { id },
+    data: { emailVerified: true },
+  });
 }

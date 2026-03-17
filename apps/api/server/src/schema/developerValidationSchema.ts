@@ -4,11 +4,9 @@ import { z } from "zod";
 // DEVELOPER VALIDATION SCHEMAS
 // ============================================================
 
-/**
- * Base schema for developer signup
- */
 export const developerSignupSchema = z.object({
   email: z
+    .string()
     .email("Hmm, that doesn't look like a valid email address")
     .min(1, "Email is required"),
 
@@ -39,35 +37,26 @@ export const developerSignupSchema = z.object({
     .regex(
       /^[a-z0-9_-]+$/,
       "Username can only use letters, numbers, hyphens and underscores",
-    )
+    ),
 });
 
-/**
- * Schema for developer signin
- */
 export const developerSigninSchema = z.object({
   email: z
     .string({ message: "Email or username is required" })
     .min(1, "Please enter your email address or username")
     .trim()
     .toLowerCase()
-    .refine(
-      (value) => {
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        const usernameRegex = /^[a-z0-9_-]+$/;
-        return emailRegex.test(value) || usernameRegex.test(value);
-      },
-      "Please enter a valid email address or username"
-    ),
+    .refine((value) => {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const usernameRegex = /^[a-z0-9_-]+$/;
+      return emailRegex.test(value) || usernameRegex.test(value);
+    }, "Please enter a valid email address or username"),
 
   password: z
     .string({ message: "Password is required" })
     .min(1, "Please enter your password"),
 });
 
-/**
- * Schema for updating developer profile
- */
 export const developerUpdateSchema = z.object({
   fullName: z
     .string()
@@ -89,9 +78,6 @@ export const developerUpdateSchema = z.object({
     .optional(),
 });
 
-/**
- * Schema for password reset request
- */
 export const passwordResetRequestSchema = z.object({
   email: z
     .string({ message: "Email is required" })
@@ -101,13 +87,21 @@ export const passwordResetRequestSchema = z.object({
     .email("Please enter a valid email address"),
 });
 
-/**
- * Schema for password reset confirmation
- */
 export const passwordResetSchema = z.object({
-  token: z
-    .string({ message: "Reset token is required" })
-    .min(1, "Reset token is required"),
+  email: z
+    .string({ message: "Email is required" })
+    .trim()
+    .toLowerCase()
+    .email("Please enter a valid email address"),
+
+  code: z
+    .string({ message: "Reset code is required" })
+    .trim()
+    .length(8, "The reset code should be exactly 8 characters")
+    .regex(
+      /^[A-Za-z0-9]{8}$/,
+      "Please paste the code exactly as it appeared in your email",
+    ),
 
   password: z
     .string({ message: "Password is required" })
@@ -118,14 +112,79 @@ export const passwordResetSchema = z.object({
     .regex(/[\W_]/, "Password must contain at least one special character"),
 });
 
-/**
- * Schema for email verification
- */
+// Kept for backwards compatibility — was token-based, now superseded by
+// verifyEmailSchema below which uses the new code-based flow
 export const emailVerificationSchema = z.object({
   token: z
     .string({ message: "Verification token is required" })
     .min(1, "Verification token is required"),
 });
+
+// ============================================================
+// EMAIL VERIFICATION — code-based flow
+// ============================================================
+
+const subjectType = z.enum(["developer", "endUser"], {
+  message: "type must be 'developer' or 'endUser'",
+});
+
+export const verifyEmailSchema = z
+  .object({
+    type: subjectType,
+
+    email: z
+      .string({ message: "Email is required" })
+      .trim()
+      .toLowerCase()
+      .email("Please enter a valid email address"),
+
+    code: z
+      .string({ message: "Verification code is required" })
+      .trim()
+      .length(8, "The verification code should be exactly 8 characters")
+      .regex(
+        /^[A-Za-z0-9]{8}$/,
+        "Please paste the code exactly as it appeared in your email",
+      ),
+
+    // Required only when type === "endUser" — enforced by the superRefine below
+    projectId: z.string().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.type === "endUser" && !data.projectId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "projectId is required for end user verification",
+        path: ["projectId"],
+      });
+    }
+  });
+
+export const resendVerificationSchema = z
+  .object({
+    type: subjectType,
+
+    email: z
+      .string({ message: "Email is required" })
+      .trim()
+      .toLowerCase()
+      .email("Please enter a valid email address"),
+
+    // Required only when type === "endUser"
+    projectId: z.string().optional(),
+
+    // Optional — used to personalise the email for end users
+    appName: z.string().trim().max(100).optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.type === "endUser" && !data.projectId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "projectId is required for end user verification",
+        path: ["projectId"],
+      });
+    }
+  });
 
 // ============================================================
 // TYPE EXPORTS
@@ -139,3 +198,5 @@ export type PasswordResetRequestInput = z.infer<
 >;
 export type PasswordResetInput = z.infer<typeof passwordResetSchema>;
 export type EmailVerificationInput = z.infer<typeof emailVerificationSchema>;
+export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
+export type ResendVerificationInput = z.infer<typeof resendVerificationSchema>;

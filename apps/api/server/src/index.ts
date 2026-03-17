@@ -3,12 +3,21 @@ import authRoutes from "./routes/auth.ts";
 import { baseHTMLResponse } from "./constants/responseConstants.ts";
 import { config } from "dotenv";
 import { connectDB, disconnectDB } from "./config/db.ts";
+import cron from "node-cron";
+import { prisma } from "./config/db.ts";
 
 const app = express();
 const PORT = process.env.PORT || 8080;
 
 config();
 connectDB();
+
+// runs every day at midnight
+cron.schedule("0 0 * * *", async () => {
+  await prisma.session.deleteMany({
+    where: { expiresAt: { lt: new Date() } },
+  });
+});
 
 // Middlewares
 app.use(express.json());

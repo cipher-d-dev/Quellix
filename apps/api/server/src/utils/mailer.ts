@@ -1,396 +1,440 @@
-import fetch from "node-fetch";
+import { Resend } from "resend";
 import crypto from "crypto";
 
-const MAILERLITE_API_URL = "https://connect.mailerlite.com/api";
-const API_KEY = process.env.MAILERLITE_API_KEY || "";
+const resend = new Resend(process.env.RESEND_API_KEY);
+const FROM = `Quellix <${process.env.RESEND_SENDER_EMAIL ?? "noreply@quellix.dev"}>`;
+const YEAR = new Date().getFullYear();
+const LOGO =
+  "https://raw.githubusercontent.com/cipher-d-dev/Quellix/1c53910fb4958b5e97485a7d53536d2dfb2a581e/apps/api/public/assets/favicon.png";
 
-interface EmailPayload {
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+type SubjectType = "developer" | "endUser";
+
+interface SendOptions {
   to: string;
   subject: string;
   html: string;
   text: string;
-  from: {
-    email: string;
-    name: string;
-  };
 }
 
-/**
- * Send email via MailerLite API
- */
-async function sendEmail(payload: EmailPayload): Promise<{ success: boolean }> {
-  try {
-    const response = await fetch(`${MAILERLITE_API_URL}/email`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${API_KEY}`,
-      },
-      body: JSON.stringify({
-        to: [{ email: payload.to }],
-        from: payload.from,
-        subject: payload.subject,
-        html: payload.html,
-        text: payload.text,
-      }),
-    });
+// ---------------------------------------------------------------------------
+// Core send
+// ---------------------------------------------------------------------------
 
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(`MailerLite API error: ${JSON.stringify(error)}`);
-    }
+async function sendEmail(options: SendOptions): Promise<{ success: boolean }> {
+  const { error } = await resend.emails.send({
+    from: FROM,
+    to: [options.to],
+    subject: options.subject,
+    html: options.html,
+    text: options.text,
+  });
 
-    return { success: true };
-  } catch (error) {
-    console.error("MailerLite email send failed:", error);
+  if (error) {
+    console.error("Resend delivery error:", error);
     throw new Error("Failed to send email");
   }
+
+  return { success: true };
 }
 
-/**
- * Generate a secure 6-digit verification code
- */
+// ---------------------------------------------------------------------------
+// Code generation — 8-char alphanumeric, ~218 trillion combinations
+// ---------------------------------------------------------------------------
+
 export function generateVerificationCode(): string {
-  // Generate cryptographically secure random 6-digit code
-  const code = crypto.randomInt(100000, 999999).toString();
-  return code;
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+  return Array.from(crypto.randomBytes(8))
+    .map((b) => chars[b % chars.length])
+    .join("");
 }
 
-/**
- * Send email verification code
- */
-export async function sendVerificationCode(
-  email: string,
-  code: string,
-): Promise<{ success: boolean }> {
-  return sendEmail({
-    to: email,
-    subject: "Your Quellix verification code",
-    html: getVerificationCodeTemplate(code),
-    text: getVerificationCodeText(code),
-    from: {
-      email: process.env.MAILERLITE_SENDER_EMAIL || "noreply@quellix.dev",
-      name: "Quellix",
-    },
-  });
-}
+// ---------------------------------------------------------------------------
+// Design system
+//
+// Palette:
+//   Page bg      #f4f4f5   (warm off-white)
+//   Card bg      #ffffff
+//   Border       #e4e4e7
+//   Header bg    #fafafa
+//   Primary      #6d28d9   (rich violet — Quellix brand)
+//   Primary soft #ede9fe
+//   Text dark    #09090b
+//   Text body    #52525b
+//   Text muted   #a1a1aa
+//   Warn bg      #fffbeb
+//   Warn border  #fde68a
+//   Warn text    #92400e
+//
+// Font: Inter via Google Fonts
+// ---------------------------------------------------------------------------
 
-/**
- * HTML email template - 6-digit code design
- */
-function getVerificationCodeTemplate(code: string): string {
-  return `
-<!DOCTYPE html>
+const FONT_IMPORT = `@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');`;
+
+function shell(body: string, footerNote: string): string {
+  return `<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <title>Verification Code</title>
-  <!--[if mso]>
-  <style type="text/css">
-    body, table, td {font-family: Arial, Helvetica, sans-serif !important;}
-  </style>
-  <![endif]-->
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+  <style>${FONT_IMPORT}</style>
+  <!--[if mso]><style>body,table,td{font-family:Arial,Helvetica,sans-serif!important;}</style><![endif]-->
 </head>
-<body style="margin: 0; padding: 0; background-color: #f6f9fc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
-  <table role="presentation" style="width: 100%; border-collapse: collapse; border: 0; border-spacing: 0; background-color: #f6f9fc;">
+<body style="margin:0;padding:0;background-color:#f4f4f5;font-family:'Inter',ui-sans-serif,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased;">
+  <table role="presentation" width="100%" style="border-collapse:collapse;background-color:#f4f4f5;">
     <tr>
-      <td align="center" style="padding: 40px 20px;">
-        <!-- Main Container -->
-        <table role="presentation" style="width: 600px; max-width: 100%; border-collapse: collapse; border: 0; border-spacing: 0; background-color: #ffffff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
-          
+      <td align="center" style="padding:48px 20px 64px;">
+
+        <!-- Card -->
+        <table role="presentation" style="width:560px;max-width:100%;background:#ffffff;border-radius:16px;border:1px solid #e4e4e7;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06),0 4px 16px rgba(0,0,0,0.04);">
+
           <!-- Header -->
           <tr>
-            <td style="padding: 40px 40px 30px 40px; border-bottom: 1px solid #e6e9ef;">
-              <h1 style="margin: 0; font-size: 24px; font-weight: 600; color: #1a1a1a; letter-spacing: -0.5px;">
-                Quellix
-              </h1>
+            <td style="padding:28px 40px;background:#fafafa;border-bottom:1px solid #e4e4e7;">
+              <table role="presentation" style="border-collapse:collapse;">
+                <tr>
+                  <td style="padding-right:10px;vertical-align:middle;">
+                    <!-- Logo wrapper — gives the transparent PNG a solid violet bg -->
+                    <div style="display:inline-block;width:38px;height:38px;border-radius:10px;line-height:0;">
+                      <img
+                        src="${LOGO}"
+                        width="38"
+                        height="38"
+                        alt="Quellix"
+                        style="display:block;border-radius:10px;"
+                      />
+                    </div>
+                  </td>
+                  <td style="vertical-align:middle;">
+                    <span style="font-size:17px;font-weight:700;color:#09090b;letter-spacing:-0.3px;font-family: Inter;">Quellix</span>
+                  </td>
+                </tr>
+              </table>
             </td>
           </tr>
-          
-          <!-- Content -->
+
+          <!-- Body -->
           <tr>
-            <td style="padding: 40px; text-align: center;">
-              <h2 style="margin: 0 0 16px 0; font-size: 20px; font-weight: 600; color: #1a1a1a; line-height: 1.4;">
-                Your verification code
-              </h2>
-              
-              <p style="margin: 0 0 32px 0; font-size: 16px; line-height: 1.6; color: #4a5568;">
-                Enter this code to verify your email address:
-              </p>
-              
-              <!-- Verification Code Box -->
-              <table role="presentation" style="margin: 0 auto 32px auto; border-collapse: collapse;">
-                <tr>
-                  <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 24px 48px; border-radius: 12px; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);">
-                    <p style="margin: 0; font-size: 42px; font-weight: 700; color: #ffffff; letter-spacing: 8px; font-family: 'Courier New', monospace;">
-                      ${code}
-                    </p>
-                  </td>
-                </tr>
-              </table>
-              
-              <p style="margin: 0 0 24px 0; font-size: 15px; line-height: 1.6; color: #718096;">
-                This code will expire in <strong style="color: #1a1a1a;">10 minutes</strong>
-              </p>
-              
-              <!-- Security Notice -->
-              <table role="presentation" style="margin: 32px auto 0 auto; max-width: 480px; padding: 16px; background-color: #fef3c7; border-radius: 8px; border-left: 4px solid #f59e0b; text-align: left;">
-                <tr>
-                  <td>
-                    <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #92400e;">
-                      <strong style="font-weight: 600;">Security tip:</strong> Never share this code with anyone. Quellix will never ask for your verification code.
-                    </p>
-                  </td>
-                </tr>
-              </table>
+            <td style="padding:44px 40px 40px;">
+              ${body}
             </td>
           </tr>
-          
+
           <!-- Footer -->
           <tr>
-            <td style="padding: 32px 40px; background-color: #f9fafb; border-radius: 0 0 12px 12px; text-align: center;">
-              <p style="margin: 0 0 8px 0; font-size: 13px; line-height: 1.5; color: #6b7280;">
-                If you didn't request this code, you can safely ignore this email.
-              </p>
-              <p style="margin: 0; font-size: 13px; line-height: 1.5; color: #9ca3af;">
-                © ${new Date().getFullYear()} Quellix. All rights reserved.
-              </p>
+            <td style="padding:24px 40px;background:#fafafa;border-top:1px solid #e4e4e7;text-align:center;">
+              <p style="margin:0 0 4px;font-size:12px;line-height:1.6;color:#a1a1aa;">${footerNote}</p>
+              <p style="margin:0;font-size:12px;color:#d4d4d8;">© ${YEAR} Quellix, Inc. All rights reserved.</p>
             </td>
           </tr>
-          
+
         </table>
+        <!-- /Card -->
+
       </td>
     </tr>
   </table>
 </body>
-</html>
-  `.trim();
+</html>`;
 }
 
-/**
- * Plain text version
- */
-function getVerificationCodeText(code: string): string {
+function codeBox(code: string): string {
   return `
-YOUR VERIFICATION CODE
+<table role="presentation" style="margin:0 auto 28px;border-collapse:collapse;">
+  <tr>
+    <td style="background:#faf5ff;border:1.5px solid #c4b5fd;border-radius:14px;padding:26px 52px;text-align:center;">
+      <p style="margin:0 0 6px;font-size:11px;font-weight:600;color:#7c3aed;letter-spacing:2.5px;text-transform:uppercase;">Verification Code</p>
+      <p style="margin:0;font-size:34px;font-weight:700;color:#09090b;letter-spacing:8px;font-family:Inter;">${code}</p>
+    </td>
+  </tr>
+</table>`;
+}
 
-Enter this code to verify your email address:
+function alertBox(message: string): string {
+  return `
+<table role="presentation" style="margin:28px auto 0;width:100%;border-collapse:collapse;">
+  <tr>
+    <td style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:14px 18px;">
+      <p style="margin:0;font-size:13px;line-height:1.65;color:#92400e;">${message}</p>
+    </td>
+  </tr>
+</table>`;
+}
+
+function expiryBadge(minutes: number): string {
+  return `
+<p style="margin:0 0 28px;text-align:center;">
+  <span style="display:inline-block;background:#f4f4f5;border:1px solid #e4e4e7;border-radius:99px;padding:5px 14px;font-size:13px;font-weight:500;color:#52525b;">
+    Expires in <strong style="color:#09090b;">${minutes} minutes</strong>
+  </span>
+</p>`;
+}
+
+function divider(): string {
+  return `<div style="height:1px;background:#f4f4f5;margin:32px 0;"></div>`;
+}
+
+// ---------------------------------------------------------------------------
+// EMAIL VERIFICATION
+// ---------------------------------------------------------------------------
+
+function developerVerificationHtml(code: string): string {
+  return shell(
+    `
+    <h1 style="margin:0 0 10px;font-size:22px;font-weight:700;color:#09090b;letter-spacing:-0.4px;">Confirm your email</h1>
+    <p style="margin:0 0 32px;font-size:15px;line-height:1.75;color:#52525b;">
+      One step before you can start building. Paste this code into the verification screen and you're in.
+    </p>
+    ${codeBox(code)}
+    ${expiryBadge(10)}
+    ${divider()}
+    ${alertBox("We'll never ask you to share this code with anyone. If someone does, it isn't us.")}
+    `,
+    "You're receiving this because someone signed up for Quellix with your email.",
+  );
+}
+
+function developerVerificationText(code: string): string {
+  return `Confirm your email
+
+One step before you can start building. Enter this code on the verification screen:
 
 ${code}
 
-This code will expire in 10 minutes.
+Expires in 10 minutes.
 
-Security tip: Never share this code with anyone. Quellix will never ask for your verification code.
-
-If you didn't request this code, you can safely ignore this email.
+We'll never ask you to share this code. If someone does, it isn't us.
 
 ---
-© ${new Date().getFullYear()} Quellix. All rights reserved.
-  `.trim();
+© ${YEAR} Quellix, Inc.`;
 }
 
-/**
- * Send password reset code
- */
+function endUserVerificationHtml(code: string, appName?: string): string {
+  const app = appName ?? "the app";
+  return shell(
+    `
+    <h1 style="margin:0 0 10px;font-size:22px;font-weight:700;color:#09090b;letter-spacing:-0.4px;">You're almost in 👋</h1>
+    <p style="margin:0 0 32px;font-size:15px;line-height:1.75;color:#52525b;">
+      Thanks for signing up. Just enter the code below to verify your email and you'll be all set to use <strong style="color:#09090b;">${app}</strong>.
+    </p>
+    ${codeBox(code)}
+    ${expiryBadge(10)}
+    ${divider()}
+    ${alertBox("Never share this code with anyone — not even us. If you didn't create an account, you can safely ignore this email.")}
+    `,
+    "You're receiving this because someone used your email to create an account.",
+  );
+}
+
+function endUserVerificationText(code: string, appName?: string): string {
+  const app = appName ?? "the app";
+  return `You're almost in!
+
+Thanks for signing up. Enter the code below to verify your email and get into ${app}.
+
+${code}
+
+Expires in 10 minutes.
+
+Never share this code with anyone. If you didn't sign up, ignore this email.
+
+---
+© ${YEAR} Quellix, Inc.`;
+}
+
+export async function sendVerificationCode(
+  type: SubjectType,
+  email: string,
+  code: string,
+  options?: { appName?: string },
+): Promise<{ success: boolean }> {
+  const isDeveloper = type === "developer";
+  return sendEmail({
+    to: email,
+    subject: isDeveloper
+      ? "Confirm your Quellix email"
+      : `Verify your email${options?.appName ? ` for ${options.appName}` : ""}`,
+    html: isDeveloper
+      ? developerVerificationHtml(code)
+      : endUserVerificationHtml(code, options?.appName),
+    text: isDeveloper
+      ? developerVerificationText(code)
+      : endUserVerificationText(code, options?.appName),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// PASSWORD RESET
+// ---------------------------------------------------------------------------
+
+function developerPasswordResetHtml(code: string): string {
+  return shell(
+    `
+    <h1 style="margin:0 0 10px;font-size:22px;font-weight:700;color:#09090b;letter-spacing:-0.4px;">Reset your password</h1>
+    <p style="margin:0 0 32px;font-size:15px;line-height:1.75;color:#52525b;">
+      Use the code below to set a new password. It's only valid for 10 minutes, so don't sit on it too long.
+    </p>
+    ${codeBox(code)}
+    ${expiryBadge(10)}
+    ${divider()}
+    ${alertBox("<strong>Didn't request this?</strong> Your password hasn't changed. If this keeps happening, it's worth checking who has access to your email account.")}
+    `,
+    "You're receiving this because a password reset was requested for your Quellix account.",
+  );
+}
+
+function developerPasswordResetText(code: string): string {
+  return `Reset your password
+
+Use the code below to set a new password. Expires in 10 minutes.
+
+${code}
+
+Didn't request this? Your password hasn't changed. Review your account security if this keeps happening.
+
+---
+© ${YEAR} Quellix, Inc.`;
+}
+
+function endUserPasswordResetHtml(code: string, appName?: string): string {
+  const app = appName ?? "your account";
+  return shell(
+    `
+    <h1 style="margin:0 0 10px;font-size:22px;font-weight:700;color:#09090b;letter-spacing:-0.4px;">Forgot your password?</h1>
+    <p style="margin:0 0 32px;font-size:15px;line-height:1.75;color:#52525b;">
+      No worries — it happens to everyone. Enter the code below to reset your password for <strong style="color:#09090b;">${app}</strong>.
+    </p>
+    ${codeBox(code)}
+    ${expiryBadge(10)}
+    ${divider()}
+    ${alertBox("<strong>Wasn't you?</strong> Your password is still safe and nothing has changed. You can ignore this email.")}
+    `,
+    "You're receiving this because a password reset was requested for your account.",
+  );
+}
+
+function endUserPasswordResetText(code: string, appName?: string): string {
+  const app = appName ?? "your account";
+  return `Forgot your password?
+
+Enter the code below to reset your password for ${app}.
+
+${code}
+
+Expires in 10 minutes.
+
+Wasn't you? Your password is still safe — you can ignore this.
+
+---
+© ${YEAR} Quellix, Inc.`;
+}
+
 export async function sendPasswordResetCode(
+  type: SubjectType,
   email: string,
   code: string,
+  options?: { appName?: string },
 ): Promise<{ success: boolean }> {
+  const isDeveloper = type === "developer";
   return sendEmail({
     to: email,
-    subject: "Your Quellix password reset code",
-    html: getPasswordResetCodeTemplate(code),
-    text: getPasswordResetCodeText(code),
-    from: {
-      email: process.env.MAILERLITE_SENDER_EMAIL || "noreply@quellix.dev",
-      name: "Quellix",
-    },
+    subject: "Reset your password",
+    html: isDeveloper
+      ? developerPasswordResetHtml(code)
+      : endUserPasswordResetHtml(code, options?.appName),
+    text: isDeveloper
+      ? developerPasswordResetText(code)
+      : endUserPasswordResetText(code, options?.appName),
   });
 }
 
-function getPasswordResetCodeTemplate(code: string): string {
-  return `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Password Reset Code</title>
-</head>
-<body style="margin: 0; padding: 0; background-color: #f6f9fc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-  <table role="presentation" style="width: 100%; border-collapse: collapse;">
-    <tr>
-      <td align="center" style="padding: 40px 20px;">
-        <table role="presentation" style="width: 600px; max-width: 100%; background-color: #ffffff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
-          <tr>
-            <td style="padding: 40px 40px 30px 40px; border-bottom: 1px solid #e6e9ef;">
-              <h1 style="margin: 0; font-size: 24px; font-weight: 600; color: #1a1a1a;">Quellix</h1>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 40px; text-align: center;">
-              <h2 style="margin: 0 0 16px 0; font-size: 20px; font-weight: 600; color: #1a1a1a;">
-                Reset your password
-              </h2>
-              <p style="margin: 0 0 32px 0; font-size: 16px; line-height: 1.6; color: #4a5568;">
-                Enter this code to reset your password:
-              </p>
-              
-              <!-- Code Box -->
-              <table role="presentation" style="margin: 0 auto 32px auto;">
-                <tr>
-                  <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 24px 48px; border-radius: 12px; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);">
-                    <p style="margin: 0; font-size: 42px; font-weight: 700; color: #ffffff; letter-spacing: 8px; font-family: 'Courier New', monospace;">
-                      ${code}
-                    </p>
-                  </td>
-                </tr>
-              </table>
-              
-              <p style="margin: 0 0 24px 0; font-size: 15px; line-height: 1.6; color: #718096;">
-                This code will expire in <strong style="color: #1a1a1a;">10 minutes</strong>
-              </p>
-              
-              <table role="presentation" style="margin: 32px auto 0 auto; max-width: 480px; padding: 16px; background-color: #fef3c7; border-radius: 8px; border-left: 4px solid #f59e0b; text-align: left;">
-                <tr>
-                  <td>
-                    <p style="margin: 0; font-size: 14px; line-height: 1.5; color: #92400e;">
-                      <strong>Security alert:</strong> If you didn't request this code, someone may be trying to access your account. Please secure your account immediately.
-                    </p>
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 32px 40px; background-color: #f9fafb; border-radius: 0 0 12px 12px; text-align: center;">
-              <p style="margin: 0; font-size: 13px; color: #6b7280;">
-                © ${new Date().getFullYear()} Quellix. All rights reserved.
-              </p>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>
-  `.trim();
+// ---------------------------------------------------------------------------
+// 2FA / LOGIN CODE
+// ---------------------------------------------------------------------------
+
+function developer2FAHtml(code: string): string {
+  return shell(
+    `
+    <h1 style="margin:0 0 10px;font-size:22px;font-weight:700;color:#09090b;letter-spacing:-0.4px;">Your login code</h1>
+    <p style="margin:0 0 32px;font-size:15px;line-height:1.75;color:#52525b;">
+      Here's your two-factor authentication code. It expires in 5 minutes — enter it quickly.
+    </p>
+    ${codeBox(code)}
+    ${expiryBadge(5)}
+    ${divider()}
+    ${alertBox("<strong>Not you?</strong> Someone has your password. Change it immediately and revoke any active sessions from your account settings.")}
+    `,
+    "This was sent because a login attempt was made on your Quellix account.",
+  );
 }
 
-function getPasswordResetCodeText(code: string): string {
-  return `
-RESET YOUR PASSWORD
+function developer2FAText(code: string): string {
+  return `Your login code
 
-Enter this code to reset your password:
+Your two-factor authentication code. Expires in 5 minutes.
 
 ${code}
 
-This code will expire in 10 minutes.
-
-Security alert: If you didn't request this code, someone may be trying to access your account. Please secure your account immediately.
+Not you? Someone has your password. Change it now and revoke active sessions.
 
 ---
-© ${new Date().getFullYear()} Quellix. All rights reserved.
-  `.trim();
+© ${YEAR} Quellix, Inc.`;
 }
 
-/**
- * Send 2FA code
- */
+function endUser2FAHtml(code: string, appName?: string): string {
+  const app = appName ?? "your account";
+  return shell(
+    `
+    <h1 style="margin:0 0 10px;font-size:22px;font-weight:700;color:#09090b;letter-spacing:-0.4px;">Finishing your sign-in</h1>
+    <p style="margin:0 0 32px;font-size:15px;line-height:1.75;color:#52525b;">
+      Almost there. Enter this code to complete signing in to <strong style="color:#09090b;">${app}</strong>.
+    </p>
+    ${codeBox(code)}
+    ${expiryBadge(5)}
+    ${divider()}
+    ${alertBox("<strong>Wasn't you?</strong> Someone may have your password. We'd recommend changing it as soon as possible.")}
+    `,
+    "This was triggered by a login attempt on your account.",
+  );
+}
+
+function endUser2FAText(code: string, appName?: string): string {
+  const app = appName ?? "your account";
+  return `Finishing your sign-in
+
+Enter this code to complete signing in to ${app}.
+
+${code}
+
+Expires in 5 minutes.
+
+Wasn't you? Someone may have your password. Change it as soon as possible.
+
+---
+© ${YEAR} Quellix, Inc.`;
+}
+
 export async function send2FACode(
+  type: SubjectType,
   email: string,
   code: string,
+  options?: { appName?: string },
 ): Promise<{ success: boolean }> {
+  const isDeveloper = type === "developer";
   return sendEmail({
     to: email,
-    subject: "Your Quellix login code",
-    html: get2FACodeTemplate(code),
-    text: get2FACodeText(code),
-    from: {
-      email: process.env.MAILERLITE_SENDER_EMAIL || "noreply@quellix.dev",
-      name: "Quellix",
-    },
+    subject: isDeveloper
+      ? "Your Quellix login code"
+      : `Your sign-in code${options?.appName ? ` for ${options.appName}` : ""}`,
+    html: isDeveloper
+      ? developer2FAHtml(code)
+      : endUser2FAHtml(code, options?.appName),
+    text: isDeveloper
+      ? developer2FAText(code)
+      : endUser2FAText(code, options?.appName),
   });
-}
-
-function get2FACodeTemplate(code: string): string {
-  return `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Login Code</title>
-</head>
-<body style="margin: 0; padding: 0; background-color: #f6f9fc; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-  <table role="presentation" style="width: 100%; border-collapse: collapse;">
-    <tr>
-      <td align="center" style="padding: 40px 20px;">
-        <table role="presentation" style="width: 600px; max-width: 100%; background-color: #ffffff; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
-          <tr>
-            <td style="padding: 40px 40px 30px 40px; border-bottom: 1px solid #e6e9ef;">
-              <h1 style="margin: 0; font-size: 24px; font-weight: 600; color: #1a1a1a;">Quellix</h1>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 40px; text-align: center;">
-              <h2 style="margin: 0 0 16px 0; font-size: 20px; font-weight: 600; color: #1a1a1a;">
-                Your login code
-              </h2>
-              <p style="margin: 0 0 32px 0; font-size: 16px; line-height: 1.6; color: #4a5568;">
-                Enter this code to complete your login:
-              </p>
-              
-              <table role="presentation" style="margin: 0 auto 32px auto;">
-                <tr>
-                  <td style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 24px 48px; border-radius: 12px; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);">
-                    <p style="margin: 0; font-size: 42px; font-weight: 700; color: #ffffff; letter-spacing: 8px; font-family: 'Courier New', monospace;">
-                      ${code}
-                    </p>
-                  </td>
-                </tr>
-              </table>
-              
-              <p style="margin: 0; font-size: 15px; line-height: 1.6; color: #718096;">
-                This code will expire in <strong style="color: #1a1a1a;">5 minutes</strong>
-              </p>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding: 32px 40px; background-color: #f9fafb; border-radius: 0 0 12px 12px; text-align: center;">
-              <p style="margin: 0 0 8px 0; font-size: 13px; color: #6b7280;">
-                If you didn't attempt to log in, please secure your account immediately.
-              </p>
-              <p style="margin: 0; font-size: 13px; color: #9ca3af;">
-                © ${new Date().getFullYear()} Quellix. All rights reserved.
-              </p>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>
-  `.trim();
-}
-
-function get2FACodeText(code: string): string {
-  return `
-YOUR LOGIN CODE
-
-Enter this code to complete your login:
-
-${code}
-
-This code will expire in 5 minutes.
-
-If you didn't attempt to log in, please secure your account immediately.
-
----
-© ${new Date().getFullYear()} Quellix. All rights reserved.
-  `.trim();
 }
