@@ -20,13 +20,37 @@ export function ApiKeys() {
   const [type, setType] = useState<"PUBLISHABLE" | "SECRET">("PUBLISHABLE");
 
   return (
-    <div className="p-8 max-w-5xl mx-auto">
-      <div className="flex items-center justify-between mb-6 animate-fade-in">
+    <div
+      style={{
+        padding: "clamp(20px,4vw,40px)",
+        maxWidth: 1080,
+        margin: "0 auto",
+      }}
+    >
+      <div
+        className="animate-fade-in"
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 16,
+          flexWrap: "wrap",
+          marginBottom: 20,
+        }}
+      >
         <div>
-          <h1 className="text-[22px] font-semibold text-[#fafafa] tracking-tight">
+          <h1
+            style={{
+              fontSize: "clamp(18px,3vw,22px)",
+              fontWeight: 600,
+              color: "#fafafa",
+              letterSpacing: -0.5,
+              margin: 0,
+            }}
+          >
             API Keys
           </h1>
-          <p className="text-[13px] mt-0.5" style={{ color: "#555" }}>
+          <p style={{ fontSize: 13, color: "#555", marginTop: 4 }}>
             Publishable keys are safe for client-side use. Never expose secret
             keys.
           </p>
@@ -50,15 +74,20 @@ export function ApiKeys() {
 
       {/* Info banner */}
       <div
-        className="flex items-start gap-3 px-4 py-3 rounded-lg mb-6 animate-fade-in"
+        className="animate-fade-in"
         style={{
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 12,
+          padding: "12px 16px",
+          borderRadius: 10,
+          marginBottom: 20,
           background: "rgba(99,102,241,0.06)",
           border: "1px solid rgba(99,102,241,0.18)",
         }}
       >
         <svg
-          className="flex-shrink-0 mt-0.5"
-          style={{ color: "#818cf8" }}
+          style={{ color: "#818cf8", flexShrink: 0, marginTop: 1 }}
           width="14"
           height="14"
           viewBox="0 0 24 24"
@@ -71,25 +100,29 @@ export function ApiKeys() {
           <line x1="12" y1="8" x2="12" y2="12" />
           <line x1="12" y1="16" x2="12.01" y2="16" />
         </svg>
-        <p className="text-[12px] leading-relaxed" style={{ color: "#818cf8" }}>
-          API keys are only shown once at creation. Store secret keys in your
+        <p
+          style={{ fontSize: 12, color: "#818cf8", margin: 0, lineHeight: 1.6 }}
+        >
+          API keys are only shown once at creation. Store secret keys in
           environment variables — never commit them to source control.
         </p>
       </div>
 
       <div
-        className="rounded-xl overflow-hidden animate-slide-up"
+        className="animate-slide-up"
         style={{
+          borderRadius: 12,
           background: "#111",
           border: "1px solid rgba(255,255,255,0.07)",
+          overflow: "hidden",
         }}
       >
         {keys.length === 0 ? (
           <EmptyState
             icon={
               <svg
-                width="18"
-                height="18"
+                width="20"
+                height="20"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -108,112 +141,219 @@ export function ApiKeys() {
             }
           />
         ) : (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Key</th>
-                <th>Type</th>
-                <th>Last Used</th>
-                <th>Created</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {keys.map((k) => (
-                <tr key={k.id}>
-                  <td className="font-medium text-[#ededed]">{k.name}</td>
-                  <td>
+          <>
+            {/* Desktop table */}
+            <div className="hidden md:block">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Key</th>
+                    <th>Type</th>
+                    <th>Last Used</th>
+                    <th>Created</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {keys.map((k) => (
+                    <tr key={k.id}>
+                      <td style={{ fontWeight: 500, color: "#ededed" }}>
+                        {k.name}
+                      </td>
+                      <td>
+                        <span
+                          style={{
+                            fontFamily: "monospace",
+                            fontSize: 11,
+                            padding: "2px 8px",
+                            borderRadius: 4,
+                            background: "rgba(255,255,255,0.06)",
+                            color: "#888",
+                          }}
+                        >
+                          {k.keyPrefix}••••••••
+                        </span>
+                      </td>
+                      <td>
+                        <Badge
+                          variant={
+                            k.type === "PUBLISHABLE" ? "indigo" : "warning"
+                          }
+                        >
+                          {k.type}
+                        </Badge>
+                      </td>
+                      <td>
+                        {k.lastUsedAt
+                          ? new Date(k.lastUsedAt).toLocaleDateString()
+                          : "Never"}
+                      </td>
+                      <td>{new Date(k.createdAt).toLocaleDateString()}</td>
+                      <td style={{ textAlign: "right" }}>
+                        <button
+                          style={{
+                            fontSize: 12,
+                            color: "rgba(248,113,113,0.7)",
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            transition: "color 0.15s",
+                          }}
+                          onMouseEnter={(e) =>
+                            (e.currentTarget.style.color = "#f87171")
+                          }
+                          onMouseLeave={(e) =>
+                            (e.currentTarget.style.color =
+                              "rgba(248,113,113,0.7)")
+                          }
+                        >
+                          Revoke
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {/* Mobile cards */}
+            <div
+              className="md:hidden"
+              style={{ display: "flex", flexDirection: "column" }}
+            >
+              {keys.map((k, i) => (
+                <div
+                  key={k.id}
+                  style={{
+                    padding: "16px",
+                    borderBottom:
+                      i < keys.length - 1
+                        ? "1px solid rgba(255,255,255,0.05)"
+                        : "none",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      marginBottom: 8,
+                    }}
+                  >
                     <span
-                      className="font-mono text-[11px] px-2 py-0.5 rounded"
                       style={{
-                        background: "rgba(255,255,255,0.06)",
-                        color: "#999",
+                        fontSize: 14,
+                        fontWeight: 600,
+                        color: "#ededed",
                       }}
                     >
-                      {k.keyPrefix}••••••••
+                      {k.name}
                     </span>
-                  </td>
-                  <td>
                     <Badge
                       variant={k.type === "PUBLISHABLE" ? "indigo" : "warning"}
                     >
                       {k.type}
                     </Badge>
-                  </td>
-                  <td>
-                    {k.lastUsedAt
-                      ? new Date(k.lastUsedAt).toLocaleDateString()
-                      : "Never"}
-                  </td>
-                  <td>{new Date(k.createdAt).toLocaleDateString()}</td>
-                  <td className="text-right">
+                  </div>
+                  <div
+                    style={{
+                      fontFamily: "monospace",
+                      fontSize: 12,
+                      color: "#888",
+                      marginBottom: 8,
+                      padding: "4px 8px",
+                      background: "rgba(255,255,255,0.05)",
+                      borderRadius: 4,
+                      display: "inline-block",
+                    }}
+                  >
+                    {k.keyPrefix}••••••••
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <span style={{ fontSize: 12, color: "#555" }}>
+                      Last used:{" "}
+                      {k.lastUsedAt
+                        ? new Date(k.lastUsedAt).toLocaleDateString()
+                        : "Never"}
+                    </span>
                     <button
-                      className="text-[12px] transition-colors"
-                      style={{ color: "rgba(248,113,113,0.7)" }}
-                      onMouseEnter={(e) =>
-                        (e.currentTarget.style.color = "#f87171")
-                      }
-                      onMouseLeave={(e) =>
-                        (e.currentTarget.style.color = "rgba(248,113,113,0.7)")
-                      }
+                      style={{
+                        fontSize: 12,
+                        color: "rgba(248,113,113,0.7)",
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                      }}
                     >
                       Revoke
                     </button>
-                  </td>
-                </tr>
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
+            </div>
+          </>
         )}
       </div>
 
       <Modal open={open} onClose={() => setOpen(false)} title="Create API Key">
-        <div className="flex flex-col gap-4">
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <Input
             label="Key Name"
             placeholder="e.g. Production, Development"
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
-          <div className="flex flex-col gap-1.5">
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <label
-              className="text-[11px] font-medium uppercase tracking-wider"
-              style={{ color: "#555" }}
+              style={{
+                fontSize: 11,
+                fontWeight: 500,
+                color: "#555",
+                textTransform: "uppercase",
+                letterSpacing: "0.08em",
+              }}
             >
               Type
             </label>
-            <div className="flex gap-2">
+            <div style={{ display: "flex", gap: 8 }}>
               {(["PUBLISHABLE", "SECRET"] as const).map((t) => (
                 <button
                   key={t}
                   onClick={() => setType(t)}
-                  className="flex-1 py-2 text-[12px] font-medium rounded transition-all"
-                  style={
-                    type === t
-                      ? {
-                          background: "rgba(99,102,241,0.1)",
-                          border: "1px solid rgba(99,102,241,0.35)",
-                          color: "#818cf8",
-                        }
-                      : {
-                          background: "transparent",
-                          border: "1px solid rgba(255,255,255,0.1)",
-                          color: "#666",
-                        }
-                  }
+                  style={{
+                    flex: 1,
+                    padding: "8px",
+                    fontSize: 12,
+                    fontWeight: 500,
+                    borderRadius: 7,
+                    cursor: "pointer",
+                    transition: "all 0.15s",
+                    background:
+                      type === t ? "rgba(99,102,241,0.1)" : "transparent",
+                    border:
+                      type === t
+                        ? "1px solid rgba(99,102,241,0.35)"
+                        : "1px solid rgba(255,255,255,0.1)",
+                    color: type === t ? "#818cf8" : "#666",
+                  }}
                 >
                   {t}
                 </button>
               ))}
             </div>
-            <p className="text-[11px]" style={{ color: "#444" }}>
+            <p style={{ fontSize: 11, color: "#444", margin: 0 }}>
               {type === "PUBLISHABLE"
                 ? "Safe to use in frontend code and SDKs."
                 : "Server-side only. Never expose in client code."}
             </p>
           </div>
-          <div className="flex gap-2 justify-end">
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
             <button onClick={() => setOpen(false)} className="btn-secondary">
               Cancel
             </button>

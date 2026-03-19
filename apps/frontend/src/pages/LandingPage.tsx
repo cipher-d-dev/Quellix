@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import LOGO from "../assets/favicon.ico";
 
 declare global {
   interface Window {
@@ -8,12 +9,7 @@ declare global {
   }
 }
 
-// ── Fix 1: Singleton GSAP loader ─────────────────────────────────────────────
-// Previously each component called loadGSAP() concurrently, racing to inject
-// script tags before window.gsap was set, causing duplicate loads and broken
-// ScrollTrigger registrations. A module-level promise guarantees one load ever.
 let _gsapPromise: Promise<void> | null = null;
-
 function loadGSAP(): Promise<void> {
   if (_gsapPromise) return _gsapPromise;
   _gsapPromise = new Promise((resolve) => {
@@ -29,7 +25,6 @@ function loadGSAP(): Promise<void> {
         "https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js";
       s2.onload = () => {
         window.gsap.registerPlugin(window.ScrollTrigger);
-        // Fix 4: refresh after async load so trigger positions are correct
         window.ScrollTrigger.refresh();
         resolve();
       };
@@ -50,7 +45,7 @@ const T = {
   pl: { color: "#e8e8e8" },
 };
 
-// ── Cursor ───────────────────────────────────────────────────────────────────
+// Cursor
 function Cursor() {
   const dot = useRef<HTMLDivElement>(null);
   const ring = useRef<HTMLDivElement>(null);
@@ -84,6 +79,7 @@ function Cursor() {
     <>
       <div
         ref={dot}
+        className="qlx-cursor"
         style={{
           position: "fixed",
           top: 0,
@@ -98,6 +94,7 @@ function Cursor() {
       />
       <div
         ref={ring}
+        className="qlx-cursor"
         style={{
           position: "fixed",
           top: 0,
@@ -115,9 +112,11 @@ function Cursor() {
   );
 }
 
-// ── Particles ────────────────────────────────────────────────────────────────
-function Particles() {
+// Interactive grid — dots at intersections glow toward the cursor
+function InteractiveGrid() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const mouseRef = useRef({ x: -9999, y: -9999 });
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -125,6 +124,7 @@ function Particles() {
     let W = 0,
       H = 0,
       raf = 0;
+
     const resize = () => {
       const p = canvas.parentElement;
       if (!p) return;
@@ -133,52 +133,88 @@ function Particles() {
     };
     resize();
     window.addEventListener("resize", resize);
-    const N = 80;
-    const pts = Array.from({ length: N }, () => ({
-      x: Math.random() * (W || 1200),
-      y: Math.random() * (H || 800),
-      vx: (Math.random() - 0.5) * 0.15,
-      vy: (Math.random() - 0.5) * 0.15,
-      r: Math.random() * 1 + 0.3,
-      o: Math.random() * 0.35 + 0.05,
-    }));
+
+    const onMove = (e: MouseEvent) => {
+      const r = canvas.getBoundingClientRect();
+      mouseRef.current = { x: e.clientX - r.left, y: e.clientY - r.top };
+    };
+    const onLeave = () => {
+      mouseRef.current = { x: -9999, y: -9999 };
+    };
+    window.addEventListener("mousemove", onMove);
+    canvas.parentElement?.addEventListener("mouseleave", onLeave);
+
+    const STEP = 52;
+    const GLOW_R = 260;
+    const GLOW_R2 = GLOW_R * GLOW_R;
+
     const draw = () => {
       ctx.clearRect(0, 0, W, H);
-      pts.forEach((p) => {
-        p.x += p.vx;
-        p.y += p.vy;
-        if (p.x < 0) p.x = W;
-        if (p.x > W) p.x = 0;
-        if (p.y < 0) p.y = H;
-        if (p.y > H) p.y = 0;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(99,102,241,${p.o})`;
-        ctx.fill();
-      });
-      for (let i = 0; i < N; i++) {
-        for (let j = i + 1; j < N; j++) {
-          const dx = pts[i].x - pts[j].x,
-            dy = pts[i].y - pts[j].y;
-          const d = Math.sqrt(dx * dx + dy * dy);
-          if (d < 90) {
-            ctx.beginPath();
-            ctx.moveTo(pts[i].x, pts[i].y);
-            ctx.lineTo(pts[j].x, pts[j].y);
-            ctx.strokeStyle = `rgba(99,102,241,${0.055 * (1 - d / 90)})`;
-            ctx.lineWidth = 0.5;
-            ctx.stroke();
-          }
+      const { x: mx, y: my } = mouseRef.current;
+
+      // horizontal lines
+      for (let y = STEP; y < H; y += STEP) {
+        for (let x = 0; x < W - STEP; x += STEP) {
+          const dx = x + STEP / 2 - mx,
+            dy = y - my;
+          const t = Math.max(0, 1 - (dx * dx + dy * dy) / GLOW_R2);
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(x + STEP, y);
+          ctx.strokeStyle = `rgba(99,102,241,${0.028 + 0.22 * t * t})`;
+          ctx.lineWidth = 0.5;
+          ctx.stroke();
         }
+      }
+      // vertical lines
+      for (let x = STEP; x < W; x += STEP) {
+        for (let y = 0; y < H - STEP; y += STEP) {
+          const dx = x - mx,
+            dy = y + STEP / 2 - my;
+          const t = Math.max(0, 1 - (dx * dx + dy * dy) / GLOW_R2);
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(x, y + STEP);
+          ctx.strokeStyle = `rgba(99,102,241,${0.028 + 0.22 * t * t})`;
+          ctx.lineWidth = 0.5;
+          ctx.stroke();
+        }
+      }
+      // dots at intersections
+      for (let x = STEP; x < W; x += STEP) {
+        for (let y = STEP; y < H; y += STEP) {
+          const dx = x - mx,
+            dy = y - my;
+          const t = Math.max(0, 1 - (dx * dx + dy * dy) / GLOW_R2);
+          ctx.beginPath();
+          ctx.arc(x, y, 1 + t * 1.4, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(99,102,241,${0.18 + 0.67 * t * t})`;
+          ctx.fill();
+        }
+      }
+      // soft bloom at cursor
+      if (mx > 0 && mx < W && my > 0 && my < H) {
+        const g = ctx.createRadialGradient(mx, my, 0, mx, my, GLOW_R * 0.55);
+        g.addColorStop(0, "rgba(99,102,241,0.055)");
+        g.addColorStop(0.5, "rgba(99,102,241,0.018)");
+        g.addColorStop(1, "rgba(99,102,241,0)");
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(mx, my, GLOW_R * 0.55, 0, Math.PI * 2);
+        ctx.fill();
       }
       raf = requestAnimationFrame(draw);
     };
     draw();
+
     return () => {
       window.removeEventListener("resize", resize);
+      window.removeEventListener("mousemove", onMove);
+      canvas.parentElement?.removeEventListener("mouseleave", onLeave);
       cancelAnimationFrame(raf);
     };
   }, []);
+
   return (
     <canvas
       ref={canvasRef}
@@ -194,152 +230,344 @@ function Particles() {
   );
 }
 
-// ── Nav ──────────────────────────────────────────────────────────────────────
+// Liquid-glass Nav — 3-col grid so links sit at true page centre
 function Nav() {
   const [scrolled, setScrolled] = useState(false);
+  const [open, setOpen] = useState(false);
+
   useEffect(() => {
     const fn = () => setScrolled(window.scrollY > 24);
     window.addEventListener("scroll", fn, { passive: true });
     return () => window.removeEventListener("scroll", fn);
   }, []);
-  const link = (color = "rgba(255,255,255,0.4)") => ({
+
+  const close = () => setOpen(false);
+
+  const glassAlpha = scrolled ? 0.07 : 0.04;
+  const borderAlpha = scrolled ? 0.12 : 0.07;
+
+  const linkSt: React.CSSProperties = {
     fontSize: 13,
-    color,
+    color: "rgba(255,255,255,0.45)",
     textDecoration: "none",
-    padding: "6px 12px",
+    padding: "6px 13px",
     borderRadius: 6,
     transition: "color 0.15s",
-  });
+    whiteSpace: "nowrap",
+  };
+
   return (
-    <nav
-      style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        right: 0,
-        zIndex: 200,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        padding: "0 48px",
-        height: 56,
-        borderBottom: scrolled
-          ? "1px solid rgba(255,255,255,0.07)"
-          : "1px solid transparent",
-        background: scrolled ? "rgba(0,0,0,0.82)" : "transparent",
-        backdropFilter: scrolled ? "blur(16px)" : "none",
-        transition: "all 0.3s",
-      }}
-    >
-      <Link
-        to="/"
+    <>
+      <nav
+        className="qlx-nav"
         style={{
-          display: "flex",
+          position: "fixed",
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: 200,
+          height: 56,
+          background: `rgba(255,255,255,${glassAlpha})`,
+          backdropFilter: "blur(28px) saturate(200%) brightness(0.96)",
+          WebkitBackdropFilter: "blur(28px) saturate(200%) brightness(0.96)",
+          boxShadow: `inset 0 1px 0 rgba(255,255,255,0.12),inset 0 -1px 0 rgba(255,255,255,0.04),0 8px 32px rgba(0,0,0,0.28)`,
+          borderBottom: `1px solid rgba(255,255,255,${borderAlpha})`,
+          transition: "background 0.35s, border-color 0.35s, box-shadow 0.35s",
+          display: "grid",
+          gridTemplateColumns: "1fr auto 1fr",
           alignItems: "center",
-          gap: 8,
-          textDecoration: "none",
+          padding: "0 48px",
+          gap: 0,
         }}
       >
+        {/* Left — Logo */}
+        <div style={{ display: "flex", alignItems: "center" }}>
+          <Link
+            to="/"
+            onClick={close}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              textDecoration: "none",
+              flexShrink: 0,
+            }}
+          >
+            <img
+              src={LOGO}
+              alt=""
+              style={{ width: 22, height: 22, objectFit: "contain" }}
+            />
+            <span
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: "#fff",
+                letterSpacing: -0.3,
+              }}
+            >
+              Quellix
+            </span>
+          </Link>
+        </div>
+
+        {/* Centre — links truly centred on page */}
         <div
+          className="qlx-nav-links"
+          style={{ display: "flex", alignItems: "center", gap: 0 }}
+        >
+          {["Features", "SDK", "Pricing", "Docs"].map((l) => (
+            <a
+              key={l}
+              href={`#${l.toLowerCase()}`}
+              style={linkSt}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "#fff")}
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.color = "rgba(255,255,255,0.45)")
+              }
+            >
+              {l}
+            </a>
+          ))}
+        </div>
+
+        {/* Right — CTA */}
+        <div
+          className="qlx-nav-cta"
           style={{
-            width: 26,
-            height: 26,
-            background: "#fff",
-            borderRadius: 6,
             display: "flex",
             alignItems: "center",
-            justifyContent: "center",
-            fontFamily: "monospace",
-            fontSize: 9,
-            fontWeight: 700,
-            color: "#000",
-            letterSpacing: -0.5,
+            gap: 8,
+            justifyContent: "flex-end",
           }}
         >
-          qlx
+          <Link
+            to="/signin"
+            style={linkSt}
+            onMouseEnter={(e) => (e.currentTarget.style.color = "#fff")}
+            onMouseLeave={(e) =>
+              (e.currentTarget.style.color = "rgba(255,255,255,0.45)")
+            }
+          >
+            Sign in
+          </Link>
+          <Link
+            to="/signup"
+            style={{
+              fontSize: 13,
+              fontWeight: 600,
+              color: "#fff",
+              textDecoration: "none",
+              background: "rgba(255,255,255,0.12)",
+              backdropFilter: "blur(12px)",
+              WebkitBackdropFilter: "blur(12px)",
+              border: "1px solid rgba(255,255,255,0.18)",
+              padding: "7px 16px",
+              borderRadius: 8,
+              transition: "all 0.18s",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              whiteSpace: "nowrap",
+              boxShadow: "inset 0 1px 0 rgba(255,255,255,0.18)",
+            }}
+            onMouseEnter={(e) => {
+              const el = e.currentTarget as HTMLElement;
+              el.style.background = "rgba(255,255,255,0.2)";
+              el.style.borderColor = "rgba(255,255,255,0.28)";
+              el.style.transform = "translateY(-1px)";
+              el.style.boxShadow =
+                "inset 0 1px 0 rgba(255,255,255,0.22),0 4px 16px rgba(0,0,0,0.3)";
+            }}
+            onMouseLeave={(e) => {
+              const el = e.currentTarget as HTMLElement;
+              el.style.background = "rgba(255,255,255,0.12)";
+              el.style.borderColor = "rgba(255,255,255,0.18)";
+              el.style.transform = "translateY(0)";
+              el.style.boxShadow = "inset 0 1px 0 rgba(255,255,255,0.18)";
+            }}
+          >
+            Get started
+            <svg
+              width="11"
+              height="11"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+            >
+              <path d="M5 12h14M12 5l7 7-7 7" />
+            </svg>
+          </Link>
         </div>
-        <span
+
+        {/* Hamburger — mobile only */}
+        <button
+          className="qlx-hamburger"
+          onClick={() => setOpen((o) => !o)}
           style={{
-            fontSize: 13,
-            fontWeight: 600,
-            color: "#fff",
-            letterSpacing: -0.3,
+            display: "none",
+            flexDirection: "column",
+            justifyContent: "center",
+            alignItems: "center",
+            gap: 5,
+            width: 36,
+            height: 36,
+            background: "transparent",
+            border: "none",
+            cursor: "pointer",
+            padding: 0,
+            gridColumn: 3,
+            justifySelf: "end" as const,
           }}
+          aria-label="Toggle navigation"
         >
-          Quellix
-        </span>
-      </Link>
-      <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+          <span
+            style={{
+              display: "block",
+              width: 20,
+              height: 1.5,
+              background: "#fff",
+              borderRadius: 2,
+              transition: "all 0.25s",
+              transform: open ? "translateY(6.5px) rotate(45deg)" : "none",
+            }}
+          />
+          <span
+            style={{
+              display: "block",
+              width: 20,
+              height: 1.5,
+              background: "#fff",
+              borderRadius: 2,
+              transition: "opacity 0.2s",
+              opacity: open ? 0 : 1,
+            }}
+          />
+          <span
+            style={{
+              display: "block",
+              width: 20,
+              height: 1.5,
+              background: "#fff",
+              borderRadius: 2,
+              transition: "all 0.25s",
+              transform: open ? "translateY(-6.5px) rotate(-45deg)" : "none",
+            }}
+          />
+        </button>
+      </nav>
+
+      {/* Mobile drawer */}
+      <div
+        className="qlx-mobile-menu"
+        style={{
+          display: "none",
+          position: "fixed",
+          top: 56,
+          left: 0,
+          right: 0,
+          zIndex: 199,
+          flexDirection: "column",
+          background: "rgba(4,4,12,0.88)",
+          backdropFilter: "blur(28px) saturate(180%)",
+          WebkitBackdropFilter: "blur(28px) saturate(180%)",
+          borderBottom: "1px solid rgba(255,255,255,0.08)",
+          boxShadow: "0 16px 40px rgba(0,0,0,0.5)",
+          padding: "16px 20px 24px",
+          transform: open ? "translateY(0)" : "translateY(-8px)",
+          opacity: open ? 1 : 0,
+          pointerEvents: open ? "auto" : "none",
+          transition: "transform 0.25s ease, opacity 0.2s ease",
+        }}
+      >
         {["Features", "SDK", "Pricing", "Docs"].map((l) => (
           <a
             key={l}
             href={`#${l.toLowerCase()}`}
-            style={link()}
+            onClick={close}
+            style={{
+              fontSize: 15,
+              color: "rgba(255,255,255,0.55)",
+              textDecoration: "none",
+              padding: "13px 4px",
+              borderBottom: "1px solid rgba(255,255,255,0.05)",
+              transition: "color 0.15s",
+            }}
             onMouseEnter={(e) => (e.currentTarget.style.color = "#fff")}
             onMouseLeave={(e) =>
-              (e.currentTarget.style.color = "rgba(255,255,255,0.4)")
+              (e.currentTarget.style.color = "rgba(255,255,255,0.55)")
             }
           >
             {l}
           </a>
         ))}
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <Link
-          to="/signin"
-          style={link()}
-          onMouseEnter={(e) => (e.currentTarget.style.color = "#fff")}
-          onMouseLeave={(e) =>
-            (e.currentTarget.style.color = "rgba(255,255,255,0.4)")
-          }
-        >
-          Sign in
-        </Link>
-        <Link
-          to="/signup"
-          style={{
-            fontSize: 13,
-            fontWeight: 600,
-            color: "#000",
-            textDecoration: "none",
-            background: "#fff",
-            padding: "7px 16px",
-            borderRadius: 7,
-            transition: "all 0.15s",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 6,
-          }}
-          onMouseEnter={(e) => {
-            (e.currentTarget as HTMLElement).style.background =
-              "rgba(255,255,255,0.88)";
-            (e.currentTarget as HTMLElement).style.transform =
-              "translateY(-1px)";
-          }}
-          onMouseLeave={(e) => {
-            (e.currentTarget as HTMLElement).style.background = "#fff";
-            (e.currentTarget as HTMLElement).style.transform = "translateY(0)";
-          }}
-        >
-          Get started
-          <svg
-            width="11"
-            height="11"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            strokeLinecap="round"
+        <div style={{ display: "flex", gap: 10, marginTop: 18 }}>
+          <Link
+            to="/signin"
+            onClick={close}
+            style={{
+              flex: 1,
+              textAlign: "center",
+              padding: "11px",
+              borderRadius: 8,
+              border: "1px solid rgba(255,255,255,0.12)",
+              color: "rgba(255,255,255,0.6)",
+              fontSize: 14,
+              textDecoration: "none",
+              background: "rgba(255,255,255,0.04)",
+              transition: "all 0.15s",
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.borderColor =
+                "rgba(255,255,255,0.25)";
+              (e.currentTarget as HTMLElement).style.color = "#fff";
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.borderColor =
+                "rgba(255,255,255,0.12)";
+              (e.currentTarget as HTMLElement).style.color =
+                "rgba(255,255,255,0.6)";
+            }}
           >
-            <path d="M5 12h14M12 5l7 7-7 7" />
-          </svg>
-        </Link>
+            Sign in
+          </Link>
+          <Link
+            to="/signup"
+            onClick={close}
+            style={{
+              flex: 1,
+              textAlign: "center",
+              padding: "11px",
+              borderRadius: 8,
+              background: "rgba(255,255,255,0.14)",
+              border: "1px solid rgba(255,255,255,0.2)",
+              color: "#fff",
+              fontSize: 14,
+              fontWeight: 600,
+              textDecoration: "none",
+              backdropFilter: "blur(12px)",
+              transition: "all 0.15s",
+            }}
+            onMouseEnter={(e) =>
+              ((e.currentTarget as HTMLElement).style.background =
+                "rgba(255,255,255,0.22)")
+            }
+            onMouseLeave={(e) =>
+              ((e.currentTarget as HTMLElement).style.background =
+                "rgba(255,255,255,0.14)")
+            }
+          >
+            Get started
+          </Link>
+        </div>
       </div>
-    </nav>
+    </>
   );
 }
 
-// ── Hero ─────────────────────────────────────────────────────────────────────
+// Hero
 function Hero() {
   const line1Ref = useRef<HTMLHeadingElement>(null);
   const line2Ref = useRef<HTMLHeadingElement>(null);
@@ -351,7 +579,6 @@ function Hero() {
 
   useEffect(() => {
     loadGSAP().then(() => {
-      const { gsap } = window;
       const els = [
         badgeRef.current,
         line1Ref.current,
@@ -360,9 +587,8 @@ function Hero() {
         ctaRef.current,
         codeRef.current,
       ];
-      // Fix 2: gsap.set + gsap.to is correct for hero (no ScrollTrigger), kept as-is
-      gsap.set(els, { opacity: 0, y: 24 });
-      gsap.to(els, {
+      window.gsap.set(els, { opacity: 0, y: 24 });
+      window.gsap.to(els, {
         opacity: 1,
         y: 0,
         duration: 0.7,
@@ -373,19 +599,20 @@ function Hero() {
     });
   }, []);
 
+  const preStyle = {
+    margin: 0,
+    fontFamily: "monospace",
+    fontSize: 12.5,
+    lineHeight: 1.9,
+    whiteSpace: "pre-wrap" as const,
+    overflowX: "auto" as const,
+  };
+
   const tabs = [
     {
       label: "Provider",
       code: (
-        <pre
-          style={{
-            margin: 0,
-            fontFamily: "monospace",
-            fontSize: 12.5,
-            lineHeight: 1.9,
-            whiteSpace: "pre-wrap",
-          }}
-        >
+        <pre style={preStyle}>
           <span style={T.kw}>import</span>
           <span style={T.op}>{" { "}</span>
           <span style={T.pl}>QuellixProvider</span>
@@ -426,15 +653,7 @@ function Hero() {
     {
       label: "useAuth",
       code: (
-        <pre
-          style={{
-            margin: 0,
-            fontFamily: "monospace",
-            fontSize: 12.5,
-            lineHeight: 1.9,
-            whiteSpace: "pre-wrap",
-          }}
-        >
+        <pre style={preStyle}>
           <span style={T.kw}>import</span>
           <span style={T.op}>{" { "}</span>
           <span style={T.pl}>useAuth</span>
@@ -481,15 +700,7 @@ function Hero() {
     {
       label: "Guards",
       code: (
-        <pre
-          style={{
-            margin: 0,
-            fontFamily: "monospace",
-            fontSize: 12.5,
-            lineHeight: 1.9,
-            whiteSpace: "pre-wrap",
-          }}
-        >
+        <pre style={preStyle}>
           <span style={T.kw}>import</span>
           <span style={T.op}>{" { "}</span>
           <span style={T.pl}>SignedIn, SignedOut</span>
@@ -519,6 +730,7 @@ function Hero() {
 
   return (
     <section
+      className="qlx-hero"
       style={{
         position: "relative",
         minHeight: "100vh",
@@ -528,36 +740,20 @@ function Hero() {
         justifyContent: "center",
         padding: "120px 24px 80px",
         textAlign: "center",
-        // Fix 5: removed zIndex:0 — hero should not create a lower stacking context
-        // Fix 6: removed isolation:"isolate" from all sections — it was creating
-        //         stacking contexts that confined children's z-indices, causing
-        //         the "overlay" appearance on Features/Pricing/CTA content
         overflow: "hidden",
       }}
     >
-      <Particles />
+      <InteractiveGrid />
       <div
         style={{
           position: "absolute",
-          inset: 0,
-          backgroundImage:
-            "linear-gradient(rgba(255,255,255,0.02) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.02) 1px,transparent 1px)",
-          backgroundSize: "52px 52px",
-          pointerEvents: "none",
-          zIndex: 1,
-          userSelect: "none",
-        }}
-      />
-      <div
-        style={{
-          position: "absolute",
-          top: "30%",
+          top: "32%",
           left: "50%",
           transform: "translate(-50%,-50%)",
-          width: 900,
+          width: 800,
           height: 600,
           background:
-            "radial-gradient(ellipse at center,rgba(99,102,241,0.08) 0%,transparent 65%)",
+            "radial-gradient(ellipse at center,rgba(99,102,241,0.07) 0%,transparent 68%)",
           pointerEvents: "none",
           zIndex: 1,
         }}
@@ -603,10 +799,10 @@ function Hero() {
         <h1
           ref={line1Ref}
           style={{
-            fontSize: "clamp(50px,8.5vw,96px)",
+            fontSize: "clamp(38px,8.5vw,96px)",
             fontWeight: 300,
             lineHeight: 0.95,
-            letterSpacing: "-4px",
+            letterSpacing: "-3px",
             color: "rgba(255,255,255,0.7)",
             margin: 0,
           }}
@@ -616,10 +812,10 @@ function Hero() {
         <h1
           ref={line2Ref}
           style={{
-            fontSize: "clamp(50px,8.5vw,96px)",
+            fontSize: "clamp(38px,8.5vw,96px)",
             fontWeight: 700,
             lineHeight: 0.95,
-            letterSpacing: "-4px",
+            letterSpacing: "-3px",
             background:
               "linear-gradient(135deg,#fff 30%,rgba(255,255,255,0.5))",
             WebkitBackgroundClip: "text",
@@ -630,11 +826,10 @@ function Hero() {
         >
           out of your way.
         </h1>
-
         <p
           ref={subRef}
           style={{
-            fontSize: 17,
+            fontSize: "clamp(14px,2vw,17px)",
             color: "rgba(255,255,255,0.35)",
             maxWidth: 440,
             margin: "0 auto 40px",
@@ -648,12 +843,14 @@ function Hero() {
 
         <div
           ref={ctaRef}
+          className="qlx-hero-btns"
           style={{
             display: "flex",
             alignItems: "center",
             gap: 10,
             justifyContent: "center",
             marginBottom: 64,
+            flexWrap: "wrap",
           }}
         >
           <Link
@@ -661,8 +858,9 @@ function Hero() {
             style={{
               display: "inline-flex",
               alignItems: "center",
+              justifyContent: "center",
               gap: 7,
-              padding: "10px 22px",
+              padding: "11px 24px",
               borderRadius: 8,
               background: "#fff",
               color: "#000",
@@ -701,8 +899,9 @@ function Hero() {
             style={{
               display: "inline-flex",
               alignItems: "center",
+              justifyContent: "center",
               gap: 6,
-              padding: "10px 20px",
+              padding: "11px 22px",
               borderRadius: 8,
               border: "1px solid rgba(255,255,255,0.1)",
               color: "rgba(255,255,255,0.5)",
@@ -726,7 +925,6 @@ function Hero() {
           </a>
         </div>
 
-        {/* Code window */}
         <div
           ref={codeRef}
           style={{
@@ -744,12 +942,14 @@ function Hero() {
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
-              padding: "11px 16px",
+              padding: "11px 14px",
               borderBottom: "1px solid rgba(255,255,255,0.06)",
               background: "rgba(255,255,255,0.015)",
+              gap: 8,
+              flexWrap: "wrap",
             }}
           >
-            <div style={{ display: "flex", gap: 6 }}>
+            <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
               {["#ff5f57", "#febc2e", "#28c840"].map((c) => (
                 <div
                   key={c}
@@ -778,7 +978,7 @@ function Hero() {
                   style={{
                     fontFamily: "monospace",
                     fontSize: 11,
-                    padding: "4px 12px",
+                    padding: "4px 10px",
                     borderRadius: 5,
                     border: "none",
                     cursor: "pointer",
@@ -790,6 +990,7 @@ function Hero() {
                       tab === i
                         ? "1px solid rgba(99,102,241,0.45)"
                         : "1px solid transparent",
+                    whiteSpace: "nowrap",
                   }}
                 >
                   {t.label}
@@ -801,22 +1002,24 @@ function Hero() {
                 fontFamily: "monospace",
                 fontSize: 11,
                 color: "rgba(255,255,255,0.2)",
+                flexShrink: 0,
               }}
             >
               app.tsx
             </span>
           </div>
-          <div style={{ padding: "22px 26px", minHeight: 200 }}>
+          <div
+            style={{ padding: "20px 22px", minHeight: 180, overflowX: "auto" }}
+          >
             {tabs[tab].code}
           </div>
         </div>
       </div>
-      <style>{`@keyframes qlx-pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.4;transform:scale(0.7)}}`}</style>
     </section>
   );
 }
 
-// ── Marquee ──────────────────────────────────────────────────────────────────
+// Marquee
 function Marquee() {
   const items = [
     "Session tokens",
@@ -879,12 +1082,11 @@ function Marquee() {
           </span>
         ))}
       </div>
-      <style>{`@keyframes qlx-marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}`}</style>
     </div>
   );
 }
 
-// ── Features ─────────────────────────────────────────────────────────────────
+// Features
 const FEATS = [
   {
     icon: (
@@ -994,15 +1196,11 @@ const FEATS = [
     desc: "Publishable and secret key pairs per project. Rotate and revoke instantly.",
   },
 ];
-
 function Features() {
   const ref = useRef<HTMLElement>(null);
   useEffect(() => {
     loadGSAP().then(() => {
       const { gsap, ScrollTrigger } = window;
-      // Fix 2: gsap.fromTo() instead of gsap.from() — explicit "to" guarantees
-      //         opacity:1 / y:0 is always reached even if trigger timing is off.
-      // Fix 3: once:true — prevents re-animation on scroll back which looked broken.
       gsap.fromTo(
         ".qlx-ftitle",
         { y: 24, opacity: 0 },
@@ -1027,15 +1225,14 @@ function Features() {
           scrollTrigger: { trigger: ref.current, start: "top 78%", once: true },
         },
       );
-      // Fix 4: refresh so positions are recalculated after async load
       ScrollTrigger.refresh();
     });
   }, []);
-
   return (
     <section
       ref={ref}
       id="features"
+      className="qlx-features-section"
       style={{
         padding: "120px 48px",
         maxWidth: 1100,
@@ -1060,7 +1257,7 @@ function Features() {
       <h2
         className="qlx-ftitle"
         style={{
-          fontSize: "clamp(30px,4vw,50px)",
+          fontSize: "clamp(26px,4vw,50px)",
           fontWeight: 300,
           letterSpacing: "-2px",
           color: "#fff",
@@ -1073,6 +1270,7 @@ function Features() {
         <strong style={{ fontWeight: 700 }}>Nothing you don't need.</strong>
       </h2>
       <div
+        className="qlx-feat-grid"
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(3,1fr)",
@@ -1089,7 +1287,7 @@ function Features() {
             className="qlx-feat"
             style={{
               background: "#000",
-              padding: "34px 30px",
+              padding: "34px 28px",
               transition: "background 0.2s",
               cursor: "default",
             }}
@@ -1143,7 +1341,7 @@ function Features() {
   );
 }
 
-// ── Stats ────────────────────────────────────────────────────────────────────
+// Stats
 function useCounter(target: number, dur = 1600) {
   const [n, setN] = useState(0);
   const elRef = useRef<HTMLDivElement>(null);
@@ -1169,12 +1367,10 @@ function useCounter(target: number, dur = 1600) {
   }, [target, dur]);
   return { elRef, n };
 }
-
 function Stats() {
-  const a = useCounter(15);
-  const b = useCounter(50000);
-  const c = useCounter(99);
-  // Fix: MIT stat had ref:null passed to <div ref={...}> — use a real ref instead
+  const a = useCounter(15),
+    b = useCounter(50000),
+    c = useCounter(99);
   const mitRef = useRef<HTMLDivElement>(null);
   const stats = [
     { ref: a.elRef, val: `${a.n}m`, label: "to integrate" },
@@ -1184,6 +1380,7 @@ function Stats() {
   ];
   return (
     <div
+      className="qlx-stats-wrap"
       style={{
         padding: "0 48px",
         maxWidth: 1148,
@@ -1193,6 +1390,7 @@ function Stats() {
       }}
     >
       <div
+        className="qlx-stats-grid"
         style={{
           display: "grid",
           gridTemplateColumns: "repeat(4,1fr)",
@@ -1221,9 +1419,9 @@ function Stats() {
           >
             <div
               style={{
-                fontSize: 44,
+                fontSize: "clamp(28px,4vw,44px)",
                 fontWeight: 700,
-                letterSpacing: "-2.5px",
+                letterSpacing: "-2px",
                 color: "#fff",
                 fontFamily: "monospace",
                 lineHeight: 1,
@@ -1248,13 +1446,12 @@ function Stats() {
   );
 }
 
-// ── Pricing ──────────────────────────────────────────────────────────────────
+// Pricing
 function Pricing() {
   const ref = useRef<HTMLElement>(null);
   useEffect(() => {
     loadGSAP().then(() => {
       const { gsap, ScrollTrigger } = window;
-      // Fix 2 + 3: fromTo + once:true
       gsap.fromTo(
         ".qlx-pcard",
         { y: 36, opacity: 0 },
@@ -1270,7 +1467,6 @@ function Pricing() {
       ScrollTrigger.refresh();
     });
   }, []);
-
   const plans = [
     {
       tier: "Open Source",
@@ -1301,11 +1497,11 @@ function Pricing() {
       featured: true,
     },
   ];
-
   return (
     <section
       ref={ref}
       id="pricing"
+      className="qlx-pricing-section"
       style={{
         padding: "120px 48px",
         maxWidth: 860,
@@ -1329,7 +1525,7 @@ function Pricing() {
       </p>
       <h2
         style={{
-          fontSize: "clamp(30px,4vw,50px)",
+          fontSize: "clamp(26px,4vw,50px)",
           fontWeight: 300,
           letterSpacing: "-2px",
           color: "#fff",
@@ -1349,6 +1545,7 @@ function Pricing() {
         No per-seat fees. No per-MAU nonsense. No surprises.
       </p>
       <div
+        className="qlx-pricing-grid"
         style={{
           display: "grid",
           gridTemplateColumns: "1fr 1fr",
@@ -1362,7 +1559,7 @@ function Pricing() {
             className="qlx-pcard"
             style={{
               borderRadius: 16,
-              padding: "34px 30px",
+              padding: "34px 28px",
               border: p.featured
                 ? "1px solid rgba(99,102,241,0.3)"
                 : "1px solid rgba(255,255,255,0.07)",
@@ -1445,10 +1642,11 @@ function Pricing() {
             <ul
               style={{
                 listStyle: "none",
+                padding: 0,
+                margin: "0 0 28px",
                 display: "flex",
                 flexDirection: "column",
                 gap: 10,
-                marginBottom: 28,
               }}
             >
               {p.features.map((f) => (
@@ -1463,7 +1661,13 @@ function Pricing() {
                     fontWeight: 300,
                   }}
                 >
-                  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 14 14"
+                    fill="none"
+                    style={{ flexShrink: 0 }}
+                  >
                     <circle
                       cx="7"
                       cy="7"
@@ -1520,19 +1724,15 @@ function Pricing() {
   );
 }
 
-// ── CTA ──────────────────────────────────────────────────────────────────────
+// CTA
 function CTA() {
-  const ref = useRef<HTMLElement>(null);
-  // Fix 7: target specific refs instead of ".qlx-cta > *" which also matched
-  //         the injected <style> tag and caused GSAP to animate a non-element
-  const h2Ref = useRef<HTMLHeadingElement>(null);
-  const pRef = useRef<HTMLParagraphElement>(null);
-  const btnsRef = useRef<HTMLDivElement>(null);
-
+  const ref = useRef<HTMLElement>(null),
+    h2Ref = useRef<HTMLHeadingElement>(null),
+    pRef = useRef<HTMLParagraphElement>(null),
+    btnsRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     loadGSAP().then(() => {
       const { gsap, ScrollTrigger } = window;
-      // Fix 2 + 3: fromTo + once:true on explicit refs
       gsap.fromTo(
         [h2Ref.current, pRef.current, btnsRef.current],
         { y: 28, opacity: 0 },
@@ -1548,10 +1748,10 @@ function CTA() {
       ScrollTrigger.refresh();
     });
   }, []);
-
   return (
     <section
       ref={ref}
+      className="qlx-cta-section"
       style={{
         padding: "80px 48px 120px",
         textAlign: "center",
@@ -1578,11 +1778,11 @@ function CTA() {
         <h2
           ref={h2Ref}
           style={{
-            fontSize: "clamp(38px,6vw,70px)",
+            fontSize: "clamp(30px,6vw,70px)",
             fontWeight: 300,
             letterSpacing: "-3px",
             color: "#fff",
-            lineHeight: 1.0,
+            lineHeight: 1.05,
             marginBottom: 14,
           }}
         >
@@ -1593,7 +1793,7 @@ function CTA() {
         <p
           ref={pRef}
           style={{
-            fontSize: 16,
+            fontSize: "clamp(14px,2vw,16px)",
             color: "rgba(255,255,255,0.28)",
             fontWeight: 300,
             marginBottom: 44,
@@ -1603,11 +1803,13 @@ function CTA() {
         </p>
         <div
           ref={btnsRef}
+          className="qlx-cta-btns"
           style={{
             display: "flex",
             gap: 12,
             justifyContent: "center",
             alignItems: "center",
+            flexWrap: "wrap",
           }}
         >
           <Link
@@ -1615,6 +1817,7 @@ function CTA() {
             style={{
               display: "inline-flex",
               alignItems: "center",
+              justifyContent: "center",
               gap: 8,
               padding: "12px 28px",
               borderRadius: 9,
@@ -1644,6 +1847,7 @@ function CTA() {
             style={{
               display: "inline-flex",
               alignItems: "center",
+              justifyContent: "center",
               gap: 8,
               padding: "12px 24px",
               borderRadius: 9,
@@ -1676,37 +1880,32 @@ function CTA() {
   );
 }
 
-// ── Footer ───────────────────────────────────────────────────────────────────
+// Footer
 function Footer() {
   return (
     <footer
+      className="qlx-footer"
       style={{
         borderTop: "1px solid rgba(255,255,255,0.06)",
         padding: "36px 48px",
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
+        flexWrap: "wrap",
+        gap: 16,
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
+      <div
+        className="qlx-footer-left"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 20,
+          flexWrap: "wrap",
+        }}
+      >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <div
-            style={{
-              width: 24,
-              height: 24,
-              background: "#fff",
-              borderRadius: 6,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontFamily: "monospace",
-              fontSize: 9,
-              fontWeight: 700,
-              color: "#000",
-            }}
-          >
-            qlx
-          </div>
+          <img src={LOGO} alt="" className={"scale-65"} />
           <span
             style={{
               fontSize: 12,
@@ -1727,7 +1926,10 @@ function Footer() {
           MIT License
         </span>
       </div>
-      <div style={{ display: "flex", gap: 24 }}>
+      <div
+        className="qlx-footer-links"
+        style={{ display: "flex", gap: 24, flexWrap: "wrap" }}
+      >
         {["Docs", "GitHub", "Privacy", "Terms"].map((l) => (
           <a
             key={l}
@@ -1753,7 +1955,7 @@ function Footer() {
   );
 }
 
-// ── Root ─────────────────────────────────────────────────────────────────────
+// Root
 export function Landing() {
   return (
     <div
@@ -1775,6 +1977,42 @@ export function Landing() {
       <Pricing />
       <CTA />
       <Footer />
+      <style>{`
+        @keyframes qlx-pulse   { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.7)} }
+        @keyframes qlx-marquee { from{transform:translateX(0)} to{transform:translateX(-50%)} }
+        @media (hover:none) { .qlx-cursor { display:none !important; } }
+        .qlx-hamburger   { display:none !important; }
+        .qlx-mobile-menu { display:none !important; }
+        @media (max-width:1024px) {
+          .qlx-nav              { padding:0 28px !important; }
+          .qlx-features-section { padding:80px 32px !important; }
+        }
+        @media (max-width:767px) {
+          .qlx-nav { grid-template-columns:auto 1fr !important; padding:0 20px !important; }
+          .qlx-nav-links  { display:none !important; }
+          .qlx-nav-cta    { display:none !important; }
+          .qlx-hamburger  { display:flex !important; grid-column:2; justify-self:end; }
+          .qlx-mobile-menu{ display:flex !important; }
+          .qlx-hero { padding:96px 20px 56px !important; }
+          .qlx-features-section { padding:72px 20px !important; }
+          .qlx-feat-grid  { grid-template-columns:repeat(2,1fr) !important; }
+          .qlx-stats-wrap { padding:0 20px !important; margin-bottom:56px !important; }
+          .qlx-stats-grid { grid-template-columns:repeat(2,1fr) !important; }
+          .qlx-pricing-section { padding:72px 20px !important; }
+          .qlx-pricing-grid    { grid-template-columns:1fr !important; }
+          .qlx-cta-section { padding:60px 20px 80px !important; }
+          .qlx-footer      { flex-direction:column !important; align-items:center !important; text-align:center !important; padding:28px 20px !important; }
+          .qlx-footer-left { justify-content:center !important; }
+          .qlx-footer-links{ justify-content:center !important; gap:16px !important; }
+        }
+        @media (max-width:479px) {
+          .qlx-feat-grid { grid-template-columns:1fr !important; }
+          .qlx-hero-btns  { flex-direction:column !important; align-items:stretch !important; }
+          .qlx-hero-btns>*{ width:100% !important; }
+          .qlx-cta-btns   { flex-direction:column !important; align-items:stretch !important; }
+          .qlx-cta-btns>* { width:100% !important; }
+        }
+      `}</style>
     </div>
   );
 }

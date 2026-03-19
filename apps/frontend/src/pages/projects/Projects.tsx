@@ -19,13 +19,37 @@ export function Projects() {
   const [name, setName] = useState("");
 
   return (
-    <div className="p-8 max-w-5xl mx-auto">
-      <div className="flex items-center justify-between mb-6 animate-fade-in">
+    <div
+      style={{
+        padding: "clamp(20px,4vw,40px)",
+        maxWidth: 1080,
+        margin: "0 auto",
+      }}
+    >
+      <div
+        className="animate-fade-in"
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 16,
+          flexWrap: "wrap",
+          marginBottom: 28,
+        }}
+      >
         <div>
-          <h1 className="text-[22px] font-semibold text-[#fafafa] tracking-tight">
+          <h1
+            style={{
+              fontSize: "clamp(18px,3vw,22px)",
+              fontWeight: 600,
+              color: "#fafafa",
+              letterSpacing: -0.5,
+              margin: 0,
+            }}
+          >
             Projects
           </h1>
-          <p className="text-[13px] mt-0.5" style={{ color: "#555" }}>
+          <p style={{ fontSize: 13, color: "#555", marginTop: 4 }}>
             Each project gets its own API keys and user base.
           </p>
         </div>
@@ -47,18 +71,20 @@ export function Projects() {
       </div>
 
       <div
-        className="rounded-xl overflow-hidden animate-slide-up"
+        className="animate-slide-up"
         style={{
+          borderRadius: 12,
           background: "#111",
           border: "1px solid rgba(255,255,255,0.07)",
+          overflow: "hidden",
         }}
       >
         {projects.length === 0 ? (
           <EmptyState
             icon={
               <svg
-                width="18"
-                height="18"
+                width="20"
+                height="20"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -79,58 +105,136 @@ export function Projects() {
             }
           />
         ) : (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Slug</th>
-                <th>API Keys</th>
-                <th>Users</th>
-                <th>Created</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {projects.map((p) => (
-                <tr key={p.id}>
-                  <td className="font-medium text-[#ededed]">{p.name}</td>
-                  <td>
+          <>
+            {/* Desktop table */}
+            <div className="hidden md:block">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Slug</th>
+                    <th>API Keys</th>
+                    <th>Users</th>
+                    <th>Created</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {projects.map((p) => (
+                    <tr key={p.id}>
+                      <td style={{ fontWeight: 500, color: "#ededed" }}>
+                        {p.name}
+                      </td>
+                      <td>
+                        <span
+                          style={{
+                            fontFamily: "monospace",
+                            fontSize: 11,
+                            padding: "2px 8px",
+                            borderRadius: 4,
+                            background: "rgba(255,255,255,0.06)",
+                            color: "#888",
+                          }}
+                        >
+                          {p.slug}
+                        </span>
+                      </td>
+                      <td>{p.keyCount}</td>
+                      <td>{p.userCount}</td>
+                      <td>{new Date(p.createdAt).toLocaleDateString()}</td>
+                      <td style={{ textAlign: "right" }}>
+                        <button
+                          style={{
+                            fontSize: 12,
+                            color: "#555",
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            transition: "color 0.15s",
+                          }}
+                          onMouseEnter={(e) =>
+                            (e.currentTarget.style.color = "#ededed")
+                          }
+                          onMouseLeave={(e) =>
+                            (e.currentTarget.style.color = "#555")
+                          }
+                        >
+                          Manage →
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {/* Mobile cards */}
+            <div
+              className="md:hidden"
+              style={{ display: "flex", flexDirection: "column" }}
+            >
+              {projects.map((p, i) => (
+                <div
+                  key={p.id}
+                  style={{
+                    padding: "16px",
+                    borderBottom:
+                      i < projects.length - 1
+                        ? "1px solid rgba(255,255,255,0.05)"
+                        : "none",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      marginBottom: 10,
+                    }}
+                  >
                     <span
-                      className="font-mono text-[11px] px-2 py-0.5 rounded"
                       style={{
-                        background: "rgba(255,255,255,0.06)",
-                        color: "#999",
+                        fontSize: 14,
+                        fontWeight: 600,
+                        color: "#ededed",
                       }}
                     >
-                      {p.slug}
+                      {p.name}
                     </span>
-                  </td>
-                  <td>{p.keyCount}</td>
-                  <td>{p.userCount}</td>
-                  <td>{new Date(p.createdAt).toLocaleDateString()}</td>
-                  <td className="text-right">
                     <button
-                      className="text-[12px] transition-colors"
-                      style={{ color: "#555" }}
-                      onMouseEnter={(e) =>
-                        (e.currentTarget.style.color = "#ededed")
-                      }
-                      onMouseLeave={(e) =>
-                        (e.currentTarget.style.color = "#555")
-                      }
+                      style={{
+                        fontSize: 12,
+                        color: "#555",
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                      }}
                     >
                       Manage →
                     </button>
-                  </td>
-                </tr>
+                  </div>
+                  <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 12, color: "#555" }}>
+                      Slug:{" "}
+                      <span style={{ fontFamily: "monospace", color: "#888" }}>
+                        {p.slug}
+                      </span>
+                    </span>
+                    <span style={{ fontSize: 12, color: "#555" }}>
+                      {p.keyCount} keys
+                    </span>
+                    <span style={{ fontSize: 12, color: "#555" }}>
+                      {p.userCount} users
+                    </span>
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
+            </div>
+          </>
         )}
       </div>
 
       <Modal open={open} onClose={() => setOpen(false)} title="New Project">
-        <div className="flex flex-col gap-4">
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <Input
             label="Project Name"
             placeholder="My App"
@@ -138,7 +242,7 @@ export function Projects() {
             onChange={(e) => setName(e.target.value)}
             hint="Used to identify your project in the dashboard."
           />
-          <div className="flex gap-2 justify-end">
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
             <button onClick={() => setOpen(false)} className="btn-secondary">
               Cancel
             </button>

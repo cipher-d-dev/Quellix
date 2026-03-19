@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { EmptyState } from "../../components/ui/EmptyState";
+import { Avatar } from "../../components/ui/Avatar";
 
 const STATS = [
   { label: "Projects", value: "0" },
@@ -14,141 +15,323 @@ export function Dashboard() {
   const navigate = useNavigate();
   const first =
     developer?.fullName?.split(" ")[0] ?? developer?.username ?? "there";
+  const hour = new Date().getHours();
+  const greeting =
+    hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
   return (
-    <div className="p-8 max-w-5xl mx-auto">
-      {/* Header */}
-      <div className="mb-8 animate-fade-in">
-        <h1 className="text-[22px] font-semibold text-[#fafafa] tracking-tight mb-1">
-          Good morning, {first} 👋
-        </h1>
-        <p className="text-[13px]" style={{ color: "#555" }}>
-          Here's what's happening across your projects.
-        </p>
+    <div
+      style={{
+        padding: "clamp(20px,4vw,40px)",
+        maxWidth: 1080,
+        margin: "0 auto",
+      }}
+    >
+      {/* ── Header ── */}
+      <div className="animate-fade-in" style={{ marginBottom: 32 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 16,
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <Avatar
+              avatarUrl={developer?.avatarUrl}
+              name={developer?.fullName}
+              email={developer?.email}
+              size={44}
+              fontSize={18}
+            />
+            <div>
+              <h1
+                style={{
+                  fontSize: "clamp(18px,3vw,22px)",
+                  fontWeight: 600,
+                  color: "#fafafa",
+                  letterSpacing: -0.5,
+                  margin: 0,
+                }}
+              >
+                {greeting}, {first} 👋
+              </h1>
+              <p style={{ fontSize: 13, color: "#555", marginTop: 2 }}>
+                Here's what's happening across your projects.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => navigate("/projects")}
+            className="btn-primary"
+            style={{ flexShrink: 0 }}
+          >
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+            >
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            New Project
+          </button>
+        </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6 animate-slide-up">
-        {STATS.map((s) => (
+      {/* ── Stats ── */}
+      <div
+        className="animate-slide-up"
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))",
+          gap: 12,
+          marginBottom: 24,
+        }}
+      >
+        {STATS.map((s, i) => (
           <div
             key={s.label}
-            className="rounded-xl px-5 py-4"
             style={{
+              borderRadius: 12,
+              padding: "20px",
               background: "#111",
               border: "1px solid rgba(255,255,255,0.07)",
+              position: "relative",
+              overflow: "hidden",
+              animationDelay: `${i * 0.05}s`,
             }}
           >
-            <p className="text-[24px] font-semibold text-[#fafafa] font-mono tracking-tight">
+            <div
+              style={{
+                position: "absolute",
+                top: -30,
+                right: -30,
+                width: 80,
+                height: 80,
+                borderRadius: "50%",
+                background: "rgba(99,102,241,0.06)",
+                pointerEvents: "none",
+              }}
+            />
+            <p
+              style={{
+                fontSize: 28,
+                fontWeight: 700,
+                color: "#fafafa",
+                fontFamily: "monospace",
+                letterSpacing: -1,
+                margin: 0,
+                lineHeight: 1,
+              }}
+            >
               {s.value}
             </p>
-            <p className="text-[12px] mt-1" style={{ color: "#555" }}>
+            <p style={{ fontSize: 12, color: "#555", marginTop: 6 }}>
               {s.label}
             </p>
           </div>
         ))}
       </div>
 
-      {/* Recent projects */}
+      {/* ── Projects + Events ── */}
       <div
-        className="rounded-xl overflow-hidden animate-slide-up mb-6"
         style={{
-          background: "#111",
-          border: "1px solid rgba(255,255,255,0.07)",
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit,minmax(300px,1fr))",
+          gap: 16,
+          marginBottom: 24,
         }}
       >
         <div
-          className="flex items-center justify-between px-5 py-3.5"
-          style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
+          className="animate-slide-up"
+          style={{
+            borderRadius: 12,
+            background: "#111",
+            border: "1px solid rgba(255,255,255,0.07)",
+            overflow: "hidden",
+          }}
         >
-          <h2 className="text-[13px] font-semibold text-[#ededed]">
-            Recent Projects
-          </h2>
-          <button
-            onClick={() => navigate("/projects")}
-            className="text-[12px] transition-colors"
-            style={{ color: "#555" }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = "#ededed")}
-            onMouseLeave={(e) => (e.currentTarget.style.color = "#555")}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "14px 18px",
+              borderBottom: "1px solid rgba(255,255,255,0.06)",
+            }}
           >
-            View all →
-          </button>
-        </div>
-        <EmptyState
-          icon={
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-            >
-              <rect x="2" y="3" width="20" height="14" rx="2" />
-              <line x1="8" y1="21" x2="16" y2="21" />
-              <line x1="12" y1="17" x2="12" y2="21" />
-            </svg>
-          }
-          title="No projects yet"
-          description="Create your first project to get API keys and start authenticating users."
-          action={
+            <span style={{ fontSize: 13, fontWeight: 600, color: "#ededed" }}>
+              Recent Projects
+            </span>
             <button
               onClick={() => navigate("/projects")}
-              className="btn-primary"
+              style={{
+                fontSize: 12,
+                color: "#555",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                padding: 0,
+                transition: "color 0.15s",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "#ededed")}
+              onMouseLeave={(e) => (e.currentTarget.style.color = "#555")}
             >
+              View all →
+            </button>
+          </div>
+          <EmptyState
+            icon={
               <svg
-                width="12"
-                height="12"
+                width="18"
+                height="18"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
-                strokeWidth="2.5"
+                strokeWidth="1.5"
                 strokeLinecap="round"
               >
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <line x1="5" y1="12" x2="19" y2="12" />
+                <rect x="2" y="3" width="20" height="14" rx="2" />
+                <line x1="8" y1="21" x2="16" y2="21" />
+                <line x1="12" y1="17" x2="12" y2="21" />
               </svg>
-              New Project
-            </button>
-          }
-        />
+            }
+            title="No projects yet"
+            description="Create your first project to get API keys and start authenticating users."
+            action={
+              <button
+                onClick={() => navigate("/projects")}
+                className="btn-primary"
+              >
+                New Project
+              </button>
+            }
+          />
+        </div>
+
+        <div
+          className="animate-slide-up"
+          style={{
+            borderRadius: 12,
+            background: "#111",
+            border: "1px solid rgba(255,255,255,0.07)",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "14px 18px",
+              borderBottom: "1px solid rgba(255,255,255,0.06)",
+            }}
+          >
+            <span style={{ fontSize: 13, fontWeight: 600, color: "#ededed" }}>
+              Auth Events
+            </span>
+            <span
+              style={{
+                fontSize: 11,
+                padding: "2px 8px",
+                borderRadius: 99,
+                background: "rgba(99,102,241,0.1)",
+                border: "1px solid rgba(99,102,241,0.2)",
+                color: "#818cf8",
+              }}
+            >
+              Live
+            </span>
+          </div>
+          <EmptyState
+            icon={
+              <svg
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              >
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+              </svg>
+            }
+            title="No events yet"
+            description="Auth events from your projects will appear here in real time."
+            action={null}
+          />
+        </div>
       </div>
 
-      {/* Quick links */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 animate-slide-up">
+      {/* ── Quick links ── */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit,minmax(200px,1fr))",
+          gap: 12,
+        }}
+      >
         {QUICK.map((q) => (
           <button
             key={q.title}
             onClick={() => navigate(q.path)}
-            className="text-left rounded-xl px-5 py-4 transition-all group"
             style={{
+              textAlign: "left",
+              borderRadius: 12,
+              padding: "20px",
               background: "#111",
               border: "1px solid rgba(255,255,255,0.07)",
+              cursor: "pointer",
+              transition: "all 0.2s",
             }}
             onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.borderColor =
-                "rgba(255,255,255,0.13)";
-              (e.currentTarget as HTMLElement).style.background = "#161616";
+              const el = e.currentTarget as HTMLElement;
+              el.style.background = "#161616";
+              el.style.borderColor = "rgba(255,255,255,0.12)";
+              el.style.transform = "translateY(-1px)";
             }}
             onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.borderColor =
-                "rgba(255,255,255,0.07)";
-              (e.currentTarget as HTMLElement).style.background = "#111";
+              const el = e.currentTarget as HTMLElement;
+              el.style.background = "#111";
+              el.style.borderColor = "rgba(255,255,255,0.07)";
+              el.style.transform = "";
             }}
           >
             <div
-              className="w-8 h-8 rounded-lg flex items-center justify-center mb-3 transition-all"
               style={{
-                background: "rgba(255,255,255,0.05)",
-                color: "#555",
+                width: 32,
+                height: 32,
+                borderRadius: 8,
+                background: "rgba(99,102,241,0.1)",
+                border: "1px solid rgba(99,102,241,0.18)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#818cf8",
+                marginBottom: 12,
               }}
             >
               {q.icon}
             </div>
-            <p className="text-[13px] font-medium text-[#ededed]">{q.title}</p>
-            <p className="text-[12px] mt-0.5" style={{ color: "#555" }}>
-              {q.desc}
+            <p
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: "#ededed",
+                margin: "0 0 4px",
+              }}
+            >
+              {q.title}
             </p>
+            <p style={{ fontSize: 12, color: "#555", margin: 0 }}>{q.desc}</p>
           </button>
         ))}
       </div>
@@ -163,8 +346,8 @@ const QUICK = [
     path: "/projects",
     icon: (
       <svg
-        width="15"
-        height="15"
+        width="14"
+        height="14"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
@@ -178,12 +361,12 @@ const QUICK = [
   },
   {
     title: "Manage API Keys",
-    desc: "View, rotate, or revoke publishable and secret keys.",
+    desc: "View, rotate, or revoke your keys.",
     path: "/api-keys",
     icon: (
       <svg
-        width="15"
-        height="15"
+        width="14"
+        height="14"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
@@ -196,12 +379,12 @@ const QUICK = [
   },
   {
     title: "Invite Team",
-    desc: "Add collaborators to your organization.",
+    desc: "Add collaborators to your org.",
     path: "/team",
     icon: (
       <svg
-        width="15"
-        height="15"
+        width="14"
+        height="14"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"

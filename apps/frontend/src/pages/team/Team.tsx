@@ -19,13 +19,37 @@ export function Team() {
   const [role, setRole] = useState("member");
 
   return (
-    <div className="p-8 max-w-5xl mx-auto">
-      <div className="flex items-center justify-between mb-6 animate-fade-in">
+    <div
+      style={{
+        padding: "clamp(20px,4vw,40px)",
+        maxWidth: 1080,
+        margin: "0 auto",
+      }}
+    >
+      <div
+        className="animate-fade-in"
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          justifyContent: "space-between",
+          gap: 16,
+          flexWrap: "wrap",
+          marginBottom: 28,
+        }}
+      >
         <div>
-          <h1 className="text-[22px] font-semibold text-[#fafafa] tracking-tight">
+          <h1
+            style={{
+              fontSize: "clamp(18px,3vw,22px)",
+              fontWeight: 600,
+              color: "#fafafa",
+              letterSpacing: -0.5,
+              margin: 0,
+            }}
+          >
             Team
           </h1>
-          <p className="text-[13px] mt-0.5" style={{ color: "#555" }}>
+          <p style={{ fontSize: 13, color: "#555", marginTop: 4 }}>
             Manage organization members and their access levels.
           </p>
         </div>
@@ -47,18 +71,20 @@ export function Team() {
       </div>
 
       <div
-        className="rounded-xl overflow-hidden animate-slide-up"
+        className="animate-slide-up"
         style={{
+          borderRadius: 12,
           background: "#111",
           border: "1px solid rgba(255,255,255,0.07)",
+          overflow: "hidden",
         }}
       >
         {members.length === 0 ? (
           <EmptyState
             icon={
               <svg
-                width="18"
-                height="18"
+                width="20"
+                height="20"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -80,45 +106,174 @@ export function Team() {
             }
           />
         ) : (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Member</th>
-                <th>Email</th>
-                <th>Role</th>
-                <th>Joined</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {members.map((m) => (
-                <tr key={m.id}>
-                  <td className="font-medium text-[#ededed]">{m.name}</td>
-                  <td>{m.email}</td>
-                  <td>
+          <>
+            {/* Desktop table */}
+            <div className="hidden md:block">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Member</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Joined</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {members.map((m) => (
+                    <tr key={m.id}>
+                      <td>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: 28,
+                              height: 28,
+                              borderRadius: "50%",
+                              background: "rgba(99,102,241,0.12)",
+                              border: "1px solid rgba(99,102,241,0.2)",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: 11,
+                              fontWeight: 600,
+                              color: "#818cf8",
+                              flexShrink: 0,
+                            }}
+                          >
+                            {m.name.charAt(0).toUpperCase()}
+                          </div>
+                          <span style={{ fontWeight: 500, color: "#ededed" }}>
+                            {m.name}
+                          </span>
+                        </div>
+                      </td>
+                      <td>{m.email}</td>
+                      <td>
+                        <Badge
+                          variant={m.role === "admin" ? "indigo" : "default"}
+                        >
+                          {m.role}
+                        </Badge>
+                      </td>
+                      <td>{new Date(m.joinedAt).toLocaleDateString()}</td>
+                      <td style={{ textAlign: "right" }}>
+                        <button
+                          style={{
+                            fontSize: 12,
+                            color: "rgba(248,113,113,0.7)",
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            transition: "color 0.15s",
+                          }}
+                          onMouseEnter={(e) =>
+                            (e.currentTarget.style.color = "#f87171")
+                          }
+                          onMouseLeave={(e) =>
+                            (e.currentTarget.style.color =
+                              "rgba(248,113,113,0.7)")
+                          }
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {/* Mobile cards */}
+            <div
+              className="md:hidden"
+              style={{ display: "flex", flexDirection: "column" }}
+            >
+              {members.map((m, i) => (
+                <div
+                  key={m.id}
+                  style={{
+                    padding: "16px",
+                    borderBottom:
+                      i < members.length - 1
+                        ? "1px solid rgba(255,255,255,0.05)"
+                        : "none",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      marginBottom: 8,
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: "50%",
+                        background: "rgba(99,102,241,0.12)",
+                        border: "1px solid rgba(99,102,241,0.2)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: "#818cf8",
+                        flexShrink: 0,
+                      }}
+                    >
+                      {m.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 600,
+                          color: "#ededed",
+                        }}
+                      >
+                        {m.name}
+                      </div>
+                      <div style={{ fontSize: 12, color: "#555" }}>
+                        {m.email}
+                      </div>
+                    </div>
                     <Badge variant={m.role === "admin" ? "indigo" : "default"}>
                       {m.role}
                     </Badge>
-                  </td>
-                  <td>{new Date(m.joinedAt).toLocaleDateString()}</td>
-                  <td className="text-right">
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <span style={{ fontSize: 12, color: "#555" }}>
+                      Joined {new Date(m.joinedAt).toLocaleDateString()}
+                    </span>
                     <button
-                      className="text-[12px] transition-colors"
-                      style={{ color: "rgba(248,113,113,0.7)" }}
-                      onMouseEnter={(e) =>
-                        (e.currentTarget.style.color = "#f87171")
-                      }
-                      onMouseLeave={(e) =>
-                        (e.currentTarget.style.color = "rgba(248,113,113,0.7)")
-                      }
+                      style={{
+                        fontSize: 12,
+                        color: "rgba(248,113,113,0.7)",
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                      }}
                     >
                       Remove
                     </button>
-                  </td>
-                </tr>
+                  </div>
+                </div>
               ))}
-            </tbody>
-          </table>
+            </div>
+          </>
         )}
       </div>
 
@@ -127,7 +282,7 @@ export function Team() {
         onClose={() => setOpen(false)}
         title="Invite Team Member"
       >
-        <div className="flex flex-col gap-4">
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <Input
             label="Email Address"
             type="email"
@@ -135,39 +290,47 @@ export function Team() {
             value={inviteEmail}
             onChange={(e) => setInviteEmail(e.target.value)}
           />
-          <div className="flex flex-col gap-1.5">
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <label
-              className="text-[11px] font-medium uppercase tracking-wider"
-              style={{ color: "#555" }}
+              style={{
+                fontSize: 11,
+                fontWeight: 500,
+                color: "#555",
+                textTransform: "uppercase",
+                letterSpacing: "0.08em",
+              }}
             >
               Role
             </label>
-            <div className="flex gap-2">
+            <div style={{ display: "flex", gap: 8 }}>
               {["member", "admin"].map((r) => (
                 <button
                   key={r}
                   onClick={() => setRole(r)}
-                  className="flex-1 py-2 text-[12px] font-medium rounded capitalize transition-all"
-                  style={
-                    role === r
-                      ? {
-                          background: "rgba(99,102,241,0.1)",
-                          border: "1px solid rgba(99,102,241,0.35)",
-                          color: "#818cf8",
-                        }
-                      : {
-                          background: "transparent",
-                          border: "1px solid rgba(255,255,255,0.1)",
-                          color: "#666",
-                        }
-                  }
+                  style={{
+                    flex: 1,
+                    padding: "8px",
+                    fontSize: 12,
+                    fontWeight: 500,
+                    borderRadius: 7,
+                    cursor: "pointer",
+                    transition: "all 0.15s",
+                    textTransform: "capitalize",
+                    background:
+                      role === r ? "rgba(99,102,241,0.1)" : "transparent",
+                    border:
+                      role === r
+                        ? "1px solid rgba(99,102,241,0.35)"
+                        : "1px solid rgba(255,255,255,0.1)",
+                    color: role === r ? "#818cf8" : "#666",
+                  }}
                 >
                   {r}
                 </button>
               ))}
             </div>
           </div>
-          <div className="flex gap-2 justify-end">
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
             <button onClick={() => setOpen(false)} className="btn-secondary">
               Cancel
             </button>

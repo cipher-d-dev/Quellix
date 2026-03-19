@@ -28,27 +28,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [developer, setDev] = useState<Developer | null>(null);
   const [isLoading, setLoading] = useState(true);
 
+  // Silent refresh on mount — restores session from httpOnly refresh_token cookie.
+  // Also reads the accessToken from the response body and stores it in memory
+  // so the axios interceptor can attach it as a Bearer token.
   useEffect(() => {
     authService
       .refresh()
       .then(({ data }) => {
-        // Hydrate the developer from the refresh response so
-        // ProtectedRoute sees isAuthenticated: true before rendering
-        setDev(data.data.developer);
-        setAccessToken(data.data.accessToken);
+        if (data.success && data.data) {
+          setAccessToken(data.data.accessToken);
+          setDev(data.data.developer);
+        }
       })
-      .catch((err) => {
-        console.error(
-          "[auth] refresh failed:",
-          err.response?.status,
-          err.response?.data,
-        );
+      .catch(() => {
         setAccessToken(null);
-        setDev(null);
       })
-      .finally(() => {
-        setLoading(false);
-      });
+      .finally(() => setLoading(false));
   }, []);
 
   const setDeveloper = useCallback((d: Developer | null) => setDev(d), []);
