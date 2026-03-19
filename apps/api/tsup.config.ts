@@ -1,7 +1,7 @@
 import { defineConfig } from "tsup";
 
 export default defineConfig({
-  entry: ["server/src/index.mts"],
+  entry: ["server/src"],
   outDir: "server/dist",
   format: ["esm"],
   target: "es2022",
