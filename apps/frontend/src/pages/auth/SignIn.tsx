@@ -38,6 +38,7 @@ export function SignIn() {
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [githubLoading, setGithubLoading] = useState(false);
   const [showGithubHint, setShowGithubHint] = useState(false);
 
   async function onSubmit(e: React.FormEvent) {
@@ -216,20 +217,35 @@ export function SignIn() {
       </div>
 
       {/* GitHub OAuth button */}
-      <a
-        href={GITHUB_URL}
+      <button
+        type="button"
+        disabled={githubLoading}
+        onClick={() => {
+          setGithubLoading(true);
+          window.location.href = GITHUB_URL;
+        }}
         className="flex items-center justify-center gap-2.5 w-full px-4 py-[7px] text-sm font-medium rounded-md transition-all duration-100 select-none"
         style={{
           background: "#161616",
           border: "1px solid rgba(255,255,255,0.1)",
-          color: "#ededed",
+          color: githubLoading ? "#555" : "#ededed",
+          cursor: githubLoading ? "default" : "pointer",
         }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = "#1c1c1c")}
+        onMouseEnter={(e) => !githubLoading && (e.currentTarget.style.background = "#1c1c1c")}
         onMouseLeave={(e) => (e.currentTarget.style.background = "#161616")}
       >
-        <GitHubIcon />
-        Continue with GitHub
-      </a>
+        {githubLoading ? (
+          <>
+            <Spinner size={14} />
+            Connecting to GitHub…
+          </>
+        ) : (
+          <>
+            <GitHubIcon />
+            Continue with GitHub
+          </>
+        )}
+      </button>
 
       <p className="text-center text-[12px] mt-5" style={{ color: "#444" }}>
         No account?{" "}

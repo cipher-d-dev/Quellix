@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { authService } from "../../api/auth.api";
@@ -18,12 +18,12 @@ interface Errs {
 const GITHUB_URL = "http://localhost:8080/api/auth/github";
 
 // ---------------------------------------------------------------------------
-// Step indicators
+// Step bar — now supports 3 steps (step 3 = account-link confirmation)
 // ---------------------------------------------------------------------------
-function StepBar({ step }: { step: 1 | 2 }) {
+function StepBar({ step, total = 2 }: { step: 1 | 2 | 3; total?: 2 | 3 }) {
   return (
     <div style={{ display: "flex", gap: 6, marginBottom: 22 }}>
-      {([1, 2] as const).map((s) => (
+      {(Array.from({ length: total }, (_, i) => i + 1) as number[]).map((s) => (
         <div
           key={s}
           style={{
@@ -46,7 +46,10 @@ export function SignUp() {
   const navigate = useNavigate();
   const { setDeveloper } = useAuth();
 
-  const [step, setStep] = useState<1 | 2>(1);
+  // step 1: email + password
+  // step 2: full name + username
+  // step 3: account-link OTP (only reached on ACCOUNT_LINKABLE collision)
+  const [step, setStep] = useState<1 | 2 | 3>(1);
 
   // Step 1 fields
   const [email, setEmail] = useState("");
@@ -57,10 +60,16 @@ export function SignUp() {
   const [fullName, setFullName] = useState("");
   const [username, setUsername] = useState("");
 
+  // Step 3 — link OTP
+  const [linkCode, setLinkCode] = useState<string[]>(Array(8).fill(""));
+  const linkInputs = useRef<(HTMLInputElement | null)[]>([]);
+  const [linkCooldown, setLinkCooldown] = useState(0);
+
   const [errors, setErrors] = useState<Errs>({});
   const [loading, setLoading] = useState(false);
+  const [githubLoading, setGithubLoading] = useState(false);
 
-  // ── Step 1 → validate locally and advance ────────────────────────────────
+  // ── Step 1 → local validation then advance ───────────────────────────────
   function handleStep1(e: React.FormEvent) {
     e.preventDefault();
     const errs: Errs = {};
@@ -103,17 +112,18 @@ export function SignUp() {
         errors?: Record<string, string>;
         error?: string;
         code?: string;
+        message?: string;
       }>;
       const body = axe.response?.data;
-      if (body?.code === "GITHUB_ACCOUNT_EXISTS") {
-        setStep(1);
-        setErrors({
-          general:
-            body.error ?? "An account with this email exists via GitHub.",
-        });
+
+      if (body?.code === "ACCOUNT_LINKABLE") {
+        // Server found an OAuth-only account with this email and sent a link
+        // code to the inbox. Transition into the link-confirmation step.
+        setLinkCode(Array(8).fill(""));
+        setErrors({});
+        setStep(3);
       } else if (body?.errors) {
         setErrors(body.errors as Errs);
-        // If the error is on an email/password field go back to step 1
         if (body.errors.email || body.errors.password) setStep(1);
       } else {
         setErrors({ general: body?.error ?? "Something went wrong." });
@@ -123,7 +133,109 @@ export function SignUp() {
     }
   }
 
-  // ── Shared input style ────────────────────────────────────────────────────
+  // ── Step 3 — OTP input helpers ───────────────────────────────────────────
+  function handleLinkPaste(e: React.ClipboardEvent) {
+    e.preventDefault();
+    const chars = e.clipboardData.getData("text").trim().slice(0, 8).split("");
+    setLinkCode(
+      Array(8)
+        .fill("")
+        .map((_, i) => chars[i] ?? ""),
+    );
+    linkInputs.current[7]?.focus();
+  }
+
+  function handleLinkChange(i: number, val: string) {
+    const c = val.slice(-1);
+    const next = [...linkCode];
+    next[i] = c;
+    setLinkCode(next);
+    if (c && i < 7) linkInputs.current[i + 1]?.focus();
+  }
+
+  function handleLinkKey(i: number, e: React.KeyboardEvent) {
+    if (e.key === "Backspace" && !linkCode[i] && i > 0)
+      linkInputs.current[i - 1]?.focus();
+  }
+
+  // ── Step 3 → confirm link ────────────────────────────────────────────────
+  async function handleLinkConfirm(e: React.FormEvent) {
+    e.preventDefault();
+    const full = linkCode.join("").trim();
+    if (full.length !== 8) {
+      setErrors({ general: "Enter all 8 characters of the code." });
+      return;
+    }
+    setErrors({});
+    setLoading(true);
+    try {
+      const { data } = await authService.linkPassword({
+        email: email.trim().toLowerCase(),
+        code: full,
+      });
+      setAccessToken(data.data.accessToken);
+      setDeveloper(data.data.developer);
+      // Account is already email-verified (server sets emailVerified: true on link)
+      navigate("/dashboard");
+    } catch (err) {
+      const axe = err as AxiosError<{ error?: string }>;
+      setErrors({
+        general: axe.response?.data?.error ?? "Something went wrong.",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ── Step 3 → resend link code ────────────────────────────────────────────
+  async function resendLinkCode() {
+    if (linkCooldown > 0) return;
+    setErrors({});
+    setLoading(true);
+    try {
+      // Re-trigger the register call — the server will rotate the token and
+      // resend the email, returning ACCOUNT_LINKABLE again (429 if too soon).
+      await authService.register({
+        email,
+        password,
+        fullName: fullName.trim() || undefined,
+        username: username.trim() || undefined,
+      });
+    } catch (err) {
+      const axe = err as AxiosError<{
+        code?: string;
+        error?: string;
+        message?: string;
+      }>;
+      const body = axe.response?.data;
+      if (body?.code === "ACCOUNT_LINKABLE") {
+        // Expected — a new code was sent
+        setLinkCode(Array(8).fill(""));
+        setLinkCooldown(60);
+        const iv = setInterval(
+          () =>
+            setLinkCooldown((v) => {
+              if (v <= 1) {
+                clearInterval(iv);
+                return 0;
+              }
+              return v - 1;
+            }),
+          1000,
+        );
+      } else if (axe.response?.status === 429) {
+        setErrors({
+          general: body?.error ?? "Please wait before requesting a new code.",
+        });
+      } else {
+        setErrors({ general: "Couldn't resend. Please try again." });
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ── Shared styles ────────────────────────────────────────────────────────
   const inputCls = (hasErr?: string) =>
     [
       "w-full px-3 py-[7px] text-sm rounded-md outline-none transition-all duration-100 placeholder:text-[#333]",
@@ -134,17 +246,38 @@ export function SignUp() {
   const inputStyle = { background: "#0f0f0f", color: "#ededed" };
   const labelCls = "text-[11px] font-medium uppercase tracking-wider";
   const labelStyle = { color: "#555" };
+  const errorBox = (msg: string) => (
+    <div
+      className="px-3 py-2.5 rounded-md text-[12px]"
+      style={{
+        background: "rgba(239,68,68,0.07)",
+        border: "1px solid rgba(239,68,68,0.2)",
+        color: "#f87171",
+      }}
+    >
+      {msg}
+    </div>
+  );
+
+  // ── Render ───────────────────────────────────────────────────────────────
+  const titles = {
+    1: {
+      title: "Create your account",
+      subtitle: "Start building with Quellix — free forever.",
+    },
+    2: {
+      title: "Set up your profile",
+      subtitle: "You can always change this later.",
+    },
+    3: {
+      title: "Confirm account link",
+      subtitle: "Check your inbox for an 8-character code.",
+    },
+  };
 
   return (
-    <AuthLayout
-      title={step === 1 ? "Create your account" : "Set up your profile"}
-      subtitle={
-        step === 1
-          ? "Start building with Quellix — free forever."
-          : "You can always change this later."
-      }
-    >
-      <StepBar step={step} />
+    <AuthLayout title={titles[step].title} subtitle={titles[step].subtitle}>
+      <StepBar step={step} total={step === 3 ? 3 : 2} />
 
       {/* ── STEP 1 ── */}
       {step === 1 && (
@@ -154,18 +287,7 @@ export function SignUp() {
             className="flex flex-col gap-4"
             noValidate
           >
-            {errors.general && (
-              <div
-                className="px-3 py-2.5 rounded-md text-[12px]"
-                style={{
-                  background: "rgba(239,68,68,0.07)",
-                  border: "1px solid rgba(239,68,68,0.2)",
-                  color: "#f87171",
-                }}
-              >
-                {errors.general}
-              </div>
-            )}
+            {errors.general && errorBox(errors.general)}
 
             <div className="flex flex-col gap-1.5">
               <label className={labelCls} style={labelStyle}>
@@ -211,33 +333,7 @@ export function SignUp() {
                   className="absolute right-2.5 top-1/2 -translate-y-1/2 transition-colors"
                   style={{ color: "#444", background: "none" }}
                 >
-                  {showPass ? (
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                    >
-                      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
-                      <line x1="1" y1="1" x2="23" y2="23" />
-                    </svg>
-                  ) : (
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                    >
-                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                      <circle cx="12" cy="12" r="3" />
-                    </svg>
-                  )}
+                  {showPass ? <EyeOffIcon /> : <EyeIcon />}
                 </button>
               </div>
               {errors.password && (
@@ -250,7 +346,6 @@ export function SignUp() {
             </button>
           </form>
 
-          {/* Divider */}
           <div className="flex items-center gap-3 my-4">
             <div
               className="flex-1 h-px"
@@ -265,21 +360,35 @@ export function SignUp() {
             />
           </div>
 
-          {/* GitHub */}
-          <a
-            href={GITHUB_URL}
+          <button
+            type="button"
+            disabled={githubLoading}
+            onClick={() => {
+              setGithubLoading(true);
+              window.location.href = GITHUB_URL;
+            }}
             className="flex items-center justify-center gap-2.5 w-full px-4 py-[7px] text-sm font-medium rounded-md transition-all duration-100 select-none"
             style={{
               background: "#161616",
               border: "1px solid rgba(255,255,255,0.1)",
-              color: "#ededed",
+              color: githubLoading ? "#555" : "#ededed",
+              cursor: githubLoading ? "default" : "pointer",
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "#1c1c1c")}
+            onMouseEnter={(e) => !githubLoading && (e.currentTarget.style.background = "#1c1c1c")}
             onMouseLeave={(e) => (e.currentTarget.style.background = "#161616")}
           >
-            <GitHubIcon />
-            Continue with GitHub
-          </a>
+            {githubLoading ? (
+              <>
+                <Spinner size={14} />
+                Connecting to GitHub…
+              </>
+            ) : (
+              <>
+                <GitHubIcon />
+                Continue with GitHub
+              </>
+            )}
+          </button>
 
           <p className="text-center text-[12px] mt-5" style={{ color: "#444" }}>
             Already have an account?{" "}
@@ -297,18 +406,7 @@ export function SignUp() {
       {/* ── STEP 2 ── */}
       {step === 2 && (
         <form onSubmit={handleStep2} className="flex flex-col gap-4" noValidate>
-          {errors.general && (
-            <div
-              className="px-3 py-2.5 rounded-md text-[12px]"
-              style={{
-                background: "rgba(239,68,68,0.07)",
-                border: "1px solid rgba(239,68,68,0.2)",
-                color: "#f87171",
-              }}
-            >
-              {errors.general}
-            </div>
-          )}
+          {errors.general && errorBox(errors.general)}
 
           <div className="flex flex-col gap-1.5">
             <label className={labelCls} style={labelStyle}>
@@ -388,7 +486,166 @@ export function SignUp() {
           </div>
         </form>
       )}
+
+      {/* ── STEP 3 — Account link OTP ── */}
+      {step === 3 && (
+        <form
+          onSubmit={handleLinkConfirm}
+          className="flex flex-col gap-5"
+          noValidate
+        >
+          {/* Contextual info banner */}
+          <div
+            className="px-3 py-3 rounded-md text-[12px] leading-relaxed"
+            style={{
+              background: "rgba(99,102,241,0.07)",
+              border: "1px solid rgba(99,102,241,0.18)",
+              color: "#a5b4fc",
+            }}
+          >
+            We've sent a code to{" "}
+            <strong style={{ color: "#c7d2fe" }}>{email}</strong>. Enter it
+            below to continue.
+          </div>
+
+          {errors.general && errorBox(errors.general)}
+
+          {/* OTP grid */}
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(8, 1fr)",
+              gap: "6px",
+            }}
+            onPaste={handleLinkPaste}
+          >
+            {linkCode.map((char, i) => (
+              <input
+                key={i}
+                ref={(el) => {
+                  linkInputs.current[i] = el;
+                }}
+                type="text"
+                maxLength={2}
+                value={char}
+                onChange={(e) => handleLinkChange(i, e.target.value)}
+                onKeyDown={(e) => handleLinkKey(i, e)}
+                autoFocus={i === 0}
+                autoCapitalize="characters"
+                autoComplete="off"
+                spellCheck={false}
+                style={{
+                  width: "100%",
+                  aspectRatio: "1",
+                  textAlign: "center",
+                  fontFamily: "monospace",
+                  fontSize: "15px",
+                  fontWeight: 600,
+                  background: "#0c0c0c",
+                  color: "#ededed",
+                  border: char
+                    ? "1px solid rgba(99,102,241,0.45)"
+                    : "1px solid rgba(255,255,255,0.1)",
+                  borderRadius: "8px",
+                  outline: "none",
+                  transition: "border-color 0.15s, box-shadow 0.15s",
+                  boxSizing: "border-box",
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = "rgba(99,102,241,0.65)";
+                  e.currentTarget.style.boxShadow =
+                    "0 0 0 3px rgba(99,102,241,0.08)";
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = char
+                    ? "rgba(99,102,241,0.45)"
+                    : "rgba(255,255,255,0.1)";
+                  e.currentTarget.style.boxShadow = "";
+                }}
+              />
+            ))}
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="btn-primary w-full"
+          >
+            {loading ? <Spinner size={14} /> : "Link Account & Sign In"}
+          </button>
+
+          <p className="text-center text-[12px]" style={{ color: "#444" }}>
+            Didn't receive it?{" "}
+            <button
+              type="button"
+              onClick={resendLinkCode}
+              disabled={linkCooldown > 0 || loading}
+              className="font-medium transition-colors disabled:opacity-40"
+              style={{ color: "#ededed" }}
+              onMouseEnter={(e) =>
+                !linkCooldown && (e.currentTarget.style.color = "#fff")
+              }
+              onMouseLeave={(e) => (e.currentTarget.style.color = "#ededed")}
+            >
+              {linkCooldown > 0 ? `Resend in ${linkCooldown}s` : "Resend code"}
+            </button>
+          </p>
+
+          <p className="text-center text-[12px]" style={{ color: "#444" }}>
+            Wrong email?{" "}
+            <button
+              type="button"
+              onClick={() => {
+                setStep(1);
+                setErrors({});
+              }}
+              className="font-medium transition-colors"
+              style={{ color: "#ededed" }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "#fff")}
+              onMouseLeave={(e) => (e.currentTarget.style.color = "#ededed")}
+            >
+              Start over
+            </button>
+          </p>
+        </form>
+      )}
     </AuthLayout>
+  );
+}
+
+// ── Icon helpers ─────────────────────────────────────────────────────────────
+
+function EyeIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+    >
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function EyeOffIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+    >
+      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+      <line x1="1" y1="1" x2="23" y2="23" />
+    </svg>
   );
 }
 

@@ -7,7 +7,7 @@ export interface Developer {
   username: string | null;
   avatarUrl: string | null;
   emailVerified: boolean;
-  authProvider: string; // "email" | "github"
+  authProvider: "email" | "github" | "both";
 }
 
 interface AuthRes {
@@ -24,6 +24,13 @@ interface DevRes {
   data: { developer: Developer };
 }
 
+// Returned when register() hits an ACCOUNT_LINKABLE collision
+export interface LinkableRes {
+  success: false;
+  code: "ACCOUNT_LINKABLE";
+  message: string;
+}
+
 export const authService = {
   register: (p: {
     email: string;
@@ -31,31 +38,46 @@ export const authService = {
     fullName?: string;
     username?: string;
   }) => api.post<AuthRes>("/auth/register", p),
+
   login: (p: { email: string; password: string }) =>
     api.post<AuthRes>("/auth/login", p),
+
   logout: () => api.post<OkRes>("/auth/logout"),
+
   refresh: () => api.post<AuthRes>("/auth/refresh"),
+
+  // Completes the account-link flow: submits the code emailed during a
+  // register() ACCOUNT_LINKABLE collision to add password login to an
+  // existing OAuth-only account.
+  linkPassword: (p: { email: string; code: string }) =>
+    api.post<AuthRes>("/auth/link-password", p),
+
   verifyEmail: (p: {
     type: string;
     email: string;
     code: string;
     projectId?: string;
   }) => api.post<OkRes>("/auth/verify-email", p),
+
   resendVerification: (p: {
     type: string;
     email: string;
     projectId?: string;
   }) => api.post<OkRes>("/auth/resend-verification", p),
+
   forgotPassword: (p: { email: string }) =>
     api.post<OkRes>("/auth/forgot-password", p),
+
   resetPassword: (p: { email: string; code: string; password: string }) =>
     api.post<OkRes>("/auth/reset-password", p),
 };
 
 export const developerService = {
   getMe: () => api.get<DevRes>("/developer/me"),
+
   updateProfile: (p: { fullName?: string; username?: string }) =>
     api.patch<DevRes>("/developer/profile", p),
+
   uploadAvatar: (file: File) => {
     const fd = new FormData();
     fd.append("avatar", file);
@@ -63,5 +85,6 @@ export const developerService = {
       headers: { "Content-Type": "multipart/form-data" },
     });
   },
+
   deleteAvatar: () => api.delete<DevRes>("/developer/avatar"),
 };
