@@ -11,6 +11,10 @@ import {
   verifyEmail,
   resendVerification,
 } from "../controllers/emailVerificationController.ts";
+import {
+  redirectToGitHub,
+  handleGitHubCallback,
+} from "../controllers/githubOAuthController.ts";
 import { validateBody } from "../middlewares/validateBody.ts";
 import {
   developerSigninSchema,
@@ -23,11 +27,15 @@ import {
 
 const router = express.Router();
 
-// ── Auth ──────────────────────────────────────────────────────────────────
+// ── Credentials ───────────────────────────────────────────────────────────
 router.post("/register", validateBody(developerSignupSchema), register);
 router.post("/login", validateBody(developerSigninSchema), login);
 router.post("/logout", logout);
 router.post("/refresh", refresh);
+
+// ── GitHub OAuth ──────────────────────────────────────────────────────────
+router.get("/github", redirectToGitHub);
+router.get("/github/callback", handleGitHubCallback);
 
 // ── Password reset ────────────────────────────────────────────────────────
 router.post(

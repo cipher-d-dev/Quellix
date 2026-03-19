@@ -17,8 +17,11 @@ model Developer {
   id            String   @id @default(cuid())
   email         String   @unique
   username      String?  @unique
-  passwordHash  String   @map("password_hash")
+  passwordHash  String?  @map("password_hash") // nullable — GitHub OAuth accounts have no password
   fullName      String?  @map("full_name")
+  avatarUrl     String?  @map("avatar_url") // Cloudinary URL or GitHub avatar
+  githubId      String?  @unique @map("github_id") // set when linked via GitHub OAuth
+  authProvider  String   @default("email") @map("auth_provider") // "email" | "github"
   emailVerified Boolean  @default(false) @map("email_verified")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
@@ -107,21 +110,10 @@ model EndUser {
 
 // ============================================================
 // SHARED — Session works for both Developer and EndUser
-//
-// Exactly one of developerId or endUserId will be set.
-// Add a DB-level CHECK constraint in a raw migration if needed:
-//
-//   ALTER TABLE sessions
-//   ADD CONSTRAINT chk_session_owner
-//   CHECK (
-//     (developer_id IS NOT NULL AND end_user_id IS NULL) OR
-//     (developer_id IS NULL     AND end_user_id IS NOT NULL)
-//   );
 // ============================================================
 
 model Session {
   id           String   @id @default(cuid())
-  // Exactly one of these two FKs will be set
   developerId  String?  @map("developer_id")
   endUserId    String?  @map("end_user_id")
   token        String   @unique
@@ -176,20 +168,10 @@ model TwoFactorBackupCode {
 
 // ============================================================
 // SHARED — VerificationToken works for both Developer and EndUser
-//
-// Exactly one of developerId or endUserId will be set.
-//
-//   ALTER TABLE verification_tokens
-//   ADD CONSTRAINT chk_verification_owner
-//   CHECK (
-//     (developer_id IS NOT NULL AND end_user_id IS NULL) OR
-//     (developer_id IS NULL     AND end_user_id IS NOT NULL)
-//   );
 // ============================================================
 
 model VerificationToken {
   id          String    @id @default(cuid())
-  // Exactly one of these two FKs will be set
   developerId String?   @map("developer_id")
   endUserId   String?   @map("end_user_id")
   token       String    @unique

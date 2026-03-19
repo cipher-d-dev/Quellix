@@ -5,6 +5,8 @@ import { config } from "dotenv";
 import { connectDB, disconnectDB } from "./config/db.ts";
 import cron from "node-cron";
 import { prisma } from "./config/db.ts";
+import cors from 'cors';
+import cookieParser from "cookie-parser";
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -22,6 +24,16 @@ cron.schedule("0 0 * * *", async () => {
 // Middlewares
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
+app.use(cors({
+  origin: process.env.FRONTEND_URL,
+  methods: ["GET", "POST", "PATCH", "DELETE"],
+  credentials: true
+}));
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Credentials", "true");
+  next();
+})
 
 // API ROUTES
 app.use("/api/auth", authRoutes);

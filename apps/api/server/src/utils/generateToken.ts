@@ -42,9 +42,9 @@ function setRefreshTokenCookie(res: Response, token: string): void {
   res.cookie("refresh_token", token, {
     httpOnly: true,
     secure: IS_PROD,
-    sameSite: "strict",
+    sameSite: IS_PROD ? "strict" : "lax",
     maxAge: REFRESH_TOKEN_EXPIRY_MS,
-    path: "/auth/refresh", // only sent on the refresh route
+    path: "/", // ← was "/auth/refresh", too restrictive
   });
 }
 
@@ -53,12 +53,13 @@ export function clearAuthCookies(res: Response): void {
     httpOnly: true,
     secure: IS_PROD,
     sameSite: "strict",
+    path: "/",
   });
   res.clearCookie("refresh_token", {
     httpOnly: true,
     secure: IS_PROD,
-    sameSite: "strict",
-    path: "/auth/refresh",
+    sameSite: IS_PROD ? "strict" : "lax",
+    path: "/", // ← must match what was set
   });
 }
 
@@ -112,7 +113,6 @@ export async function issueTokens(
     },
   });
 
-  setAccessTokenCookie(res, accessToken);
   setRefreshTokenCookie(res, refreshToken);
 
   return { accessToken, refreshToken };
