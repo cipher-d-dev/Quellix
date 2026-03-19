@@ -186,6 +186,21 @@ export const resendVerificationSchema = z
     }
   });
 
+export const confirmLinkPasswordSchema = z.object({
+  email: z
+    .string({ error: "Email is required." })
+    .email("Please enter a valid email address.")
+    .toLowerCase()
+    .trim(),
+ 
+  code: z
+    .string({ error: "Code is required." })
+    .min(8, "Code must be 8 characters.")
+    .max(8, "Code must be 8 characters.")
+    .regex(/^[A-Za-z0-9]{8}$/, "Invalid code format."),
+});
+ 
+
 // ============================================================
 // TYPE EXPORTS
 // ============================================================

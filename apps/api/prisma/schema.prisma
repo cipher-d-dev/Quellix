@@ -17,11 +17,11 @@ model Developer {
   id            String   @id @default(cuid())
   email         String   @unique
   username      String?  @unique
-  passwordHash  String?  @map("password_hash") // nullable — GitHub OAuth accounts have no password
+  passwordHash  String?  @map("password_hash") // nullable — OAuth-only accounts have no password
   fullName      String?  @map("full_name")
-  avatarUrl     String?  @map("avatar_url") // Cloudinary URL or GitHub avatar
+  avatarUrl     String?  @map("avatar_url") // Cloudinary URL or provider avatar
   githubId      String?  @unique @map("github_id") // set when linked via GitHub OAuth
-  authProvider  String   @default("email") @map("auth_provider") // "email" | "github"
+  authProvider  String   @default("email") @map("auth_provider") // "email" | "github" | "both"
   emailVerified Boolean  @default(false) @map("email_verified")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
@@ -192,6 +192,12 @@ enum TokenType {
   EMAIL_VERIFICATION
   PASSWORD_RESET
   TWO_FACTOR
+  // Used during the account-linking flow: when a user tries to register with
+  // an email that already belongs to an OAuth-only account, we issue this
+  // token type to verify inbox ownership before adding a password to the
+  // existing account. The token field stores "<code>:<argon2hash>" so no
+  // extra column is needed.
+  ACCOUNT_LINK
 }
 
 // ============================================================

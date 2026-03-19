@@ -25,7 +25,6 @@ interface GitHubEmail {
 
 // ---------------------------------------------------------------------------
 // Step 1 — GET /auth/github
-// Redirect browser to GitHub authorization page.
 // ---------------------------------------------------------------------------
 
 export function redirectToGitHub(_req: Request, res: Response) {
@@ -40,12 +39,16 @@ export function redirectToGitHub(_req: Request, res: Response) {
 // ---------------------------------------------------------------------------
 // Step 2 — GET /auth/github/callback
 //
-// Merge logic (best practice — same as Clerk, Auth0, Supabase):
+// Merge / linking logic:
 //
-//  Case A  githubId already on record                → log in that developer
-//  Case B  email matches existing email-only account → link GitHub to account
-//          (auto-merge: GitHub has verified the email, so it's safe to link)
-//  Case C  no match at all                           → create new developer
+//  Case A  githubId already on record                  → log in
+//  Case B  email matches an existing account           → link GitHub to it
+//          GitHub has verified the email, so auto-merge is safe.
+//          authProvider is set depending on what was already there:
+//            - had password only    → "both"
+//            - had no password      → "github"
+//            - already "both"       → stays "both"
+//  Case C  no match                                    → create new account
 // ---------------------------------------------------------------------------
 
 export async function handleGitHubCallback(req: Request, res: Response) {
@@ -79,7 +82,7 @@ export async function handleGitHubCallback(req: Request, res: Response) {
       Accept: "application/vnd.github+json",
     };
 
-    // 2. Fetch profile + emails in parallel
+    // 2. Fetch profile + verified emails in parallel
     const [profileRes, emailsRes] = await Promise.all([
       axios.get<GitHubUser>("https://api.github.com/user", {
         headers: ghHeaders,
@@ -92,7 +95,6 @@ export async function handleGitHubCallback(req: Request, res: Response) {
     const profile = profileRes.data;
     const githubId = profile.id.toString();
 
-    // Pick primary verified email; fall back to profile email
     const primaryEmail =
       emailsRes.data.find((e) => e.primary && e.verified)?.email ??
       emailsRes.data.find((e) => e.verified)?.email ??
@@ -109,28 +111,34 @@ export async function handleGitHubCallback(req: Request, res: Response) {
 
     if (developer) {
       if (developer.githubId && developer.githubId !== githubId) {
-        // Extremely unlikely: different GitHub account, same email already linked elsewhere
+        // A different GitHub account is already linked to this email
         return res.redirect(`${FRONTEND_URL}/signin?error=github_conflict`);
       }
 
-      // Case A: already linked → just refresh avatar and log in
-      // Case B: email match but no githubId → link GitHub to existing account (auto-merge)
-      const needsLink = !developer.githubId;
+      const isFirstLink = !developer.githubId;
+
+      // Derive the correct authProvider value:
+      //   already "both"           → keep "both"
+      //   first link + has pass    → "both"  (they had email, now also github)
+      //   first link + no pass     → "github"
+      //   already "github"         → stay "github"
+      let newAuthProvider = developer.authProvider;
+      if (isFirstLink) {
+        newAuthProvider = developer.passwordHash ? "both" : "github";
+      }
 
       developer = await prisma.developer.update({
         where: { id: developer.id },
         data: {
           githubId,
-          avatarUrl: developer.avatarUrl ?? profile.avatar_url, // keep existing custom avatar if set
-          emailVerified: true, // GitHub emails are verified
-          // Only update authProvider if it was email-only; keep "email" if they have a password
-          ...(needsLink && !developer.passwordHash
-            ? { authProvider: "github" }
-            : {}),
+          // Preserve a custom avatar the user may have set
+          avatarUrl: developer.avatarUrl ?? profile.avatar_url,
+          emailVerified: true,
+          authProvider: newAuthProvider,
         },
       });
     } else {
-      // Case C: new developer — create from GitHub profile
+      // Case C: brand-new developer via GitHub
       const desiredUsername = profile.login
         .toLowerCase()
         .replace(/[^a-z0-9_-]/g, "");
@@ -152,16 +160,15 @@ export async function handleGitHubCallback(req: Request, res: Response) {
       });
     }
 
-    // 4. Issue tokens and set cookie
+    // 4. Issue tokens and set httpOnly refresh cookie
     const tokens = await issueTokens(
       { type: "developer", id: developer.id },
       res,
       { ipAddress: req.ip, userAgent: req.headers["user-agent"] },
     );
 
-    // 5. Redirect to frontend with accessToken in URL fragment
-    //    The frontend reads it once and stores in memory — never persisted.
-    //    Using a fragment (#) means it's never sent to servers in request headers.
+    // 5. Redirect with access token in URL fragment — never sent in request
+    //    headers, never stored by the browser beyond the current page load.
     return res.redirect(
       `${FRONTEND_URL}/oauth/callback#token=${tokens.accessToken}`,
     );

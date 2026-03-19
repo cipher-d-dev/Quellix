@@ -98,7 +98,6 @@ function shell(body: string, footerNote: string): string {
               <table role="presentation" style="border-collapse:collapse;">
                 <tr>
                   <td style="padding-right:10px;vertical-align:middle;">
-                    <!-- Logo wrapper — gives the transparent PNG a solid violet bg -->
                     <div style="display:inline-block;width:38px;height:38px;border-radius:10px;line-height:0;">
                       <img
                         src="${LOGO}"
@@ -436,5 +435,58 @@ export async function send2FACode(
     text: isDeveloper
       ? developer2FAText(code)
       : endUser2FAText(code, options?.appName),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// ACCOUNT LINK
+//
+// Sent when a user tries to register with an email that already belongs to
+// an OAuth-only account. The code proves inbox ownership before we add a
+// password to the existing account.
+// ---------------------------------------------------------------------------
+
+function accountLinkHtml(code: string): string {
+  return shell(
+    `
+    <h1 style="margin:0 0 10px;font-size:22px;font-weight:700;color:#09090b;letter-spacing:-0.4px;">Add password login to your account</h1>
+    <p style="margin:0 0 32px;font-size:15px;line-height:1.75;color:#52525b;">
+      We received a request to add password-based login to your existing Quellix account.
+      Enter the code below to confirm — once done, you can sign in with either method.
+    </p>
+    ${codeBox(code)}
+    ${expiryBadge(10)}
+    ${divider()}
+    ${alertBox("<strong>Didn't request this?</strong> Someone else tried to register with your email. You can safely ignore this — your account is unchanged.")}
+    `,
+    "You're receiving this because a password login request was made for your Quellix account.",
+  );
+}
+
+function accountLinkText(code: string): string {
+  return `Add password login to your account
+
+We received a request to add password-based login to your existing Quellix account.
+Enter the code below to confirm. Once done, you can sign in with either method.
+
+${code}
+
+Expires in 10 minutes.
+
+Didn't request this? Someone tried to register with your email — your account is unchanged, ignore this.
+
+---
+© ${YEAR} Quellix, Inc.`;
+}
+
+export async function sendAccountLinkCode(
+  email: string,
+  code: string,
+): Promise<{ success: boolean }> {
+  return sendEmail({
+    to: email,
+    subject: "Confirm adding password login to your Quellix account",
+    html: accountLinkHtml(code),
+    text: accountLinkText(code),
   });
 }
