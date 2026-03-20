@@ -15,7 +15,7 @@ interface Errs {
   general?: string;
 }
 
-const GITHUB_URL = `${import.meta.env.BASE_API_URL}/auth/github`;
+const GITHUB_URL = `${import.meta.env.VITE_API_URL}/auth/github`;
 
 // ---------------------------------------------------------------------------
 // Step bar — now supports 3 steps (step 3 = account-link confirmation)

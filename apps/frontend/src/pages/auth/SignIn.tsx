@@ -12,7 +12,7 @@ import { AuthLayout } from "../../components/layout/AuthLayout";
 import { Spinner } from "../../components/ui/Spinner";
 import type { AxiosError } from "axios";
 
-const GITHUB_URL = `${import.meta.env.BASE_API_URL}/auth/github`;
+const GITHUB_URL = `${import.meta.env.VITE_API_URL}/auth/github`;
 
 const OAUTH_ERRORS: Record<string, string> = {
   github_denied: "GitHub sign-in was cancelled.",
