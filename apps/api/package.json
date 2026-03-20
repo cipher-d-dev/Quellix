@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "nodemon server/src/index",
     "build": "npx prisma generate && tsup",
-    "start": "node server/dist/index.js"
+    "start": "node server/dist/index.cjs"
   },
   "keywords": [],
   "author": "",
