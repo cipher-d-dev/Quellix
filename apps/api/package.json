@@ -6,7 +6,7 @@
   "main": "index.ts",
   "scripts": {
     "dev": "nodemon server/src/index",
-    "build": "npx prisma generate && tsup",
+    "build": "npx prisma generate && npx tsup",
     "start": "node server/dist/index.js"
   },
   "keywords": [],
