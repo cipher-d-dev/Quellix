@@ -29,20 +29,26 @@ type SessionOwner =
 
 const IS_PROD = process.env.NODE_ENV === "production";
 
+// In production the frontend and backend are on different domains, so cookies
+// must be SameSite=None + Secure to be sent cross-origin. In development
+// both run on localhost so Lax is fine and Secure is not required.
+const SAME_SITE = IS_PROD ? "none" : "lax";
+
 function setAccessTokenCookie(res: Response, token: string): void {
   res.cookie("access_token", token, {
     httpOnly: true,
-    secure: IS_PROD,
-    sameSite: "strict",
+    secure: IS_PROD, // required when SameSite=None
+    sameSite: SAME_SITE,
     maxAge: 15 * 60 * 1000,
+    path: "/",
   });
 }
 
 function setRefreshTokenCookie(res: Response, token: string): void {
   res.cookie("refresh_token", token, {
     httpOnly: true,
-    secure: IS_PROD,
-    sameSite: IS_PROD ? "strict" : "lax",
+    secure: IS_PROD, // required when SameSite=None
+    sameSite: SAME_SITE,
     maxAge: REFRESH_TOKEN_EXPIRY_MS,
     path: "/", // ← was "/auth/refresh", too restrictive
   });
@@ -52,13 +58,13 @@ export function clearAuthCookies(res: Response): void {
   res.clearCookie("access_token", {
     httpOnly: true,
     secure: IS_PROD,
-    sameSite: "strict",
+    sameSite: SAME_SITE,
     path: "/",
   });
   res.clearCookie("refresh_token", {
     httpOnly: true,
     secure: IS_PROD,
-    sameSite: IS_PROD ? "strict" : "lax",
+    sameSite: SAME_SITE,
     path: "/", // ← must match what was set
   });
 }
