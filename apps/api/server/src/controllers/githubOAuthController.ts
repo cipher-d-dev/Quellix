@@ -25,13 +25,28 @@ interface GitHubEmail {
 
 // ---------------------------------------------------------------------------
 // Step 1 — GET /auth/github
+//
+// Accepts an optional ?next= query param (e.g. /team/accept?token=xxx).
+// We pass it through the OAuth round-trip via GitHub's `state` param so we
+// can recover it in the callback and include it in the redirect to the
+// frontend. The state is base64-encoded JSON — lightweight and avoids
+// URL encoding issues.
 // ---------------------------------------------------------------------------
 
-export function redirectToGitHub(_req: Request, res: Response) {
+export function redirectToGitHub(req: Request, res: Response) {
+  const next = typeof req.query.next === "string" ? req.query.next : null;
+
+  // Encode a small state payload: { next? }
+  // GitHub requires the state param to be a string, so we base64-encode JSON.
+  const statePayload = Buffer.from(JSON.stringify({ next })).toString(
+    "base64url",
+  );
+
   const params = new URLSearchParams({
     client_id: GITHUB_CLIENT_ID,
     redirect_uri: GITHUB_CALLBACK_URL,
     scope: "read:user user:email",
+    state: statePayload,
   });
   return res.redirect(`https://github.com/login/oauth/authorize?${params}`);
 }
@@ -43,16 +58,26 @@ export function redirectToGitHub(_req: Request, res: Response) {
 //
 //  Case A  githubId already on record                  → log in
 //  Case B  email matches an existing account           → link GitHub to it
-//          GitHub has verified the email, so auto-merge is safe.
-//          authProvider is set depending on what was already there:
-//            - had password only    → "both"
-//            - had no password      → "github"
-//            - already "both"       → stays "both"
 //  Case C  no match                                    → create new account
 // ---------------------------------------------------------------------------
 
 export async function handleGitHubCallback(req: Request, res: Response) {
-  const { code, error } = req.query;
+  const { code, error, state } = req.query;
+
+  // Decode the state param to recover the optional ?next= value
+  let nextPath: string | null = null;
+  if (typeof state === "string") {
+    try {
+      const decoded = JSON.parse(
+        Buffer.from(state, "base64url").toString("utf8"),
+      );
+      if (typeof decoded.next === "string" && decoded.next.startsWith("/")) {
+        nextPath = decoded.next;
+      }
+    } catch {
+      // Malformed state — ignore, continue without redirect
+    }
+  }
 
   if (error || !code) {
     return res.redirect(`${FRONTEND_URL}/signin?error=github_denied`);
@@ -111,17 +136,11 @@ export async function handleGitHubCallback(req: Request, res: Response) {
 
     if (developer) {
       if (developer.githubId && developer.githubId !== githubId) {
-        // A different GitHub account is already linked to this email
         return res.redirect(`${FRONTEND_URL}/signin?error=github_conflict`);
       }
 
       const isFirstLink = !developer.githubId;
 
-      // Derive the correct authProvider value:
-      //   already "both"           → keep "both"
-      //   first link + has pass    → "both"  (they had email, now also github)
-      //   first link + no pass     → "github"
-      //   already "github"         → stay "github"
       let newAuthProvider = developer.authProvider;
       if (isFirstLink) {
         newAuthProvider = developer.passwordHash ? "both" : "github";
@@ -131,7 +150,6 @@ export async function handleGitHubCallback(req: Request, res: Response) {
         where: { id: developer.id },
         data: {
           githubId,
-          // Preserve a custom avatar the user may have set
           avatarUrl: developer.avatarUrl ?? profile.avatar_url,
           emailVerified: true,
           authProvider: newAuthProvider,
@@ -160,18 +178,24 @@ export async function handleGitHubCallback(req: Request, res: Response) {
       });
     }
 
-    // 4. Issue tokens and set httpOnly refresh cookie
+    // 4. Issue tokens — set httpOnly refresh cookie
     const tokens = await issueTokens(
       { type: "developer", id: developer.id },
       res,
       { ipAddress: req.ip, userAgent: req.headers["user-agent"] },
     );
 
-    // 5. Redirect with access token in URL fragment — never sent in request
-    //    headers, never stored by the browser beyond the current page load.
-    return res.redirect(
-      `${FRONTEND_URL}/oauth/callback#token=${tokens.accessToken}`,
-    );
+    // 5. Redirect with access token in URL fragment.
+    //    Append next= as a query param on the callback page so the frontend
+    //    can redirect after it has stored the token.
+    const callbackUrl = new URL(`${FRONTEND_URL}/oauth/callback`);
+    callbackUrl.hash = `token=${tokens.accessToken}`;
+    if (nextPath) {
+      // Pass next as a query param alongside the fragment
+      callbackUrl.searchParams.set("next", nextPath);
+    }
+
+    return res.redirect(callbackUrl.toString());
   } catch (err) {
     console.error("[GitHub OAuth] Callback error:", err);
     return res.redirect(`${FRONTEND_URL}/signin?error=github_failed`);

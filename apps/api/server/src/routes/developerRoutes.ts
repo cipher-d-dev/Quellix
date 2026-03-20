@@ -6,7 +6,15 @@ import {
   uploadAvatar,
   deleteAvatar,
   avatarUpload,
+  changePassword,
+  deleteAccount,
 } from "../controllers/profileController.ts";
+import { validateBody } from "../middlewares/validateBody.ts";
+import {
+  developerUpdateSchema,
+  changePasswordSchema,
+  deleteAccountSchema,
+} from "../schema/developerValidationSchema.ts";
 
 const router = express.Router();
 
@@ -14,8 +22,14 @@ const router = express.Router();
 router.use(requireAuth);
 
 router.get("/me", getProfile);
-router.patch("/profile", updateProfile);
+router.patch("/profile", validateBody(developerUpdateSchema), updateProfile);
 router.post("/avatar", avatarUpload.single("avatar"), uploadAvatar);
 router.delete("/avatar", deleteAvatar);
+router.post(
+  "/change-password",
+  validateBody(changePasswordSchema),
+  changePassword,
+);
+router.delete("/account", validateBody(deleteAccountSchema), deleteAccount);
 
 export default router;

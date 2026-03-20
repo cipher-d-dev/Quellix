@@ -54,22 +54,6 @@ export function generateVerificationCode(): string {
 
 // ---------------------------------------------------------------------------
 // Design system
-//
-// Palette:
-//   Page bg      #f4f4f5   (warm off-white)
-//   Card bg      #ffffff
-//   Border       #e4e4e7
-//   Header bg    #fafafa
-//   Primary      #6d28d9   (rich violet — Quellix brand)
-//   Primary soft #ede9fe
-//   Text dark    #09090b
-//   Text body    #52525b
-//   Text muted   #a1a1aa
-//   Warn bg      #fffbeb
-//   Warn border  #fde68a
-//   Warn text    #92400e
-//
-// Font: Inter via Google Fonts
 // ---------------------------------------------------------------------------
 
 const FONT_IMPORT = `@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');`;
@@ -88,24 +72,14 @@ function shell(body: string, footerNote: string): string {
   <table role="presentation" width="100%" style="border-collapse:collapse;background-color:#f4f4f5;">
     <tr>
       <td align="center" style="padding:48px 20px 64px;">
-
-        <!-- Card -->
         <table role="presentation" style="width:560px;max-width:100%;background:#ffffff;border-radius:16px;border:1px solid #e4e4e7;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06),0 4px 16px rgba(0,0,0,0.04);">
-
-          <!-- Header -->
           <tr>
             <td style="padding:28px 40px;background:#fafafa;border-bottom:1px solid #e4e4e7;">
               <table role="presentation" style="border-collapse:collapse;">
                 <tr>
                   <td style="padding-right:10px;vertical-align:middle;">
                     <div style="display:inline-block;width:38px;height:38px;border-radius:10px;line-height:0;">
-                      <img
-                        src="${LOGO}"
-                        width="38"
-                        height="38"
-                        alt="Quellix"
-                        style="display:block;border-radius:10px;"
-                      />
+                      <img src="${LOGO}" width="38" height="38" alt="Quellix" style="display:block;border-radius:10px;" />
                     </div>
                   </td>
                   <td style="vertical-align:middle;">
@@ -115,25 +89,18 @@ function shell(body: string, footerNote: string): string {
               </table>
             </td>
           </tr>
-
-          <!-- Body -->
           <tr>
             <td style="padding:44px 40px 40px;">
               ${body}
             </td>
           </tr>
-
-          <!-- Footer -->
           <tr>
             <td style="padding:24px 40px;background:#fafafa;border-top:1px solid #e4e4e7;text-align:center;">
               <p style="margin:0 0 4px;font-size:12px;line-height:1.6;color:#a1a1aa;">${footerNote}</p>
               <p style="margin:0;font-size:12px;color:#d4d4d8;">© ${YEAR} Quellix, Inc. All rights reserved.</p>
             </td>
           </tr>
-
         </table>
-        <!-- /Card -->
-
       </td>
     </tr>
   </table>
@@ -175,6 +142,17 @@ function expiryBadge(minutes: number): string {
 
 function divider(): string {
   return `<div style="height:1px;background:#f4f4f5;margin:32px 0;"></div>`;
+}
+
+function ctaButton(label: string, url: string): string {
+  return `
+<table role="presentation" style="margin:32px auto;border-collapse:collapse;">
+  <tr>
+    <td style="background:#6d28d9;border-radius:10px;text-align:center;">
+      <a href="${url}" style="display:inline-block;padding:14px 32px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;letter-spacing:-0.2px;">${label}</a>
+    </td>
+  </tr>
+</table>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -440,10 +418,6 @@ export async function send2FACode(
 
 // ---------------------------------------------------------------------------
 // ACCOUNT LINK
-//
-// Sent when a user tries to register with an email that already belongs to
-// an OAuth-only account. The code proves inbox ownership before we add a
-// password to the existing account.
 // ---------------------------------------------------------------------------
 
 function accountLinkHtml(code: string): string {
@@ -488,5 +462,66 @@ export async function sendAccountLinkCode(
     subject: "Confirm adding password login to your Quellix account",
     html: accountLinkHtml(code),
     text: accountLinkText(code),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// TEAM INVITE
+// ---------------------------------------------------------------------------
+
+function teamInviteHtml(
+  inviterName: string,
+  role: string,
+  acceptUrl: string,
+): string {
+  return shell(
+    `
+    <h1 style="margin:0 0 10px;font-size:22px;font-weight:700;color:#09090b;letter-spacing:-0.4px;">You've been invited to join a team</h1>
+    <p style="margin:0 0 32px;font-size:15px;line-height:1.75;color:#52525b;">
+      <strong style="color:#09090b;">${inviterName}</strong> has invited you to join their Quellix workspace
+      as a <strong style="color:#09090b;">${role}</strong>. Click below to accept.
+    </p>
+    ${ctaButton("Accept Invite", acceptUrl)}
+    ${divider()}
+    <p style="margin:0;font-size:13px;line-height:1.65;color:#71717a;text-align:center;">
+      Or copy this link:<br/>
+      <span style="font-family:monospace;font-size:12px;color:#6d28d9;word-break:break-all;">${acceptUrl}</span>
+    </p>
+    ${divider()}
+    ${alertBox("This invite expires in 7 days. If you didn't expect this, you can safely ignore it.")}
+    `,
+    "You're receiving this because someone invited you to their Quellix workspace.",
+  );
+}
+
+function teamInviteText(
+  inviterName: string,
+  role: string,
+  acceptUrl: string,
+): string {
+  return `You've been invited to join a team
+
+${inviterName} has invited you to join their Quellix workspace as a ${role}.
+
+Accept the invite here:
+${acceptUrl}
+
+This invite expires in 7 days. If you didn't expect this, ignore this email.
+
+---
+© ${YEAR} Quellix, Inc.`;
+}
+
+export async function sendTeamInviteEmail(
+  email: string,
+  inviterName: string,
+  role: string,
+  acceptUrl: string,
+): Promise<{ success: boolean }> {
+  return sendEmail({
+    to: email,
+    subject: `${inviterName} invited you to their Quellix workspace`,
+    html: teamInviteHtml(inviterName, role, acceptUrl),
+    text: teamInviteText(inviterName, role, acceptUrl),
   });
 }

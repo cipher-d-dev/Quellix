@@ -112,8 +112,7 @@ export const passwordResetSchema = z.object({
     .regex(/[\W_]/, "Password must contain at least one special character"),
 });
 
-// Kept for backwards compatibility — was token-based, now superseded by
-// verifyEmailSchema below which uses the new code-based flow
+// Kept for backwards compatibility
 export const emailVerificationSchema = z.object({
   token: z
     .string({ message: "Verification token is required" })
@@ -131,13 +130,11 @@ const subjectType = z.enum(["developer", "endUser"], {
 export const verifyEmailSchema = z
   .object({
     type: subjectType,
-
     email: z
       .string({ message: "Email is required" })
       .trim()
       .toLowerCase()
       .email("Please enter a valid email address"),
-
     code: z
       .string({ message: "Verification code is required" })
       .trim()
@@ -146,8 +143,6 @@ export const verifyEmailSchema = z
         /^[A-Za-z0-9]{8}$/,
         "Please paste the code exactly as it appeared in your email",
       ),
-
-    // Required only when type === "endUser" — enforced by the superRefine below
     projectId: z.string().optional(),
   })
   .superRefine((data, ctx) => {
@@ -163,17 +158,12 @@ export const verifyEmailSchema = z
 export const resendVerificationSchema = z
   .object({
     type: subjectType,
-
     email: z
       .string({ message: "Email is required" })
       .trim()
       .toLowerCase()
       .email("Please enter a valid email address"),
-
-    // Required only when type === "endUser"
     projectId: z.string().optional(),
-
-    // Optional — used to personalise the email for end users
     appName: z.string().trim().max(100).optional(),
   })
   .superRefine((data, ctx) => {
@@ -192,14 +182,43 @@ export const confirmLinkPasswordSchema = z.object({
     .email("Please enter a valid email address.")
     .toLowerCase()
     .trim(),
- 
+
   code: z
     .string({ error: "Code is required." })
     .min(8, "Code must be 8 characters.")
     .max(8, "Code must be 8 characters.")
     .regex(/^[A-Za-z0-9]{8}$/, "Invalid code format."),
 });
- 
+
+// ============================================================
+// CHANGE PASSWORD — for logged-in developers
+// ============================================================
+
+const passwordRules = z
+  .string({ message: "Password is required" })
+  .min(8, "Password must be at least 8 characters")
+  .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
+  .regex(/[a-z]/, "Password must contain at least one lowercase letter")
+  .regex(/[0-9]/, "Password must contain at least one number")
+  .regex(/[\W_]/, "Password must contain at least one special character");
+
+export const changePasswordSchema = z.object({
+  currentPassword: z
+    .string({ message: "Current password is required." })
+    .min(1, "Current password is required."),
+
+  newPassword: passwordRules,
+});
+
+// ============================================================
+// DELETE ACCOUNT
+// ============================================================
+
+export const deleteAccountSchema = z.object({
+  // Optional — only required for accounts with a passwordHash.
+  // The controller enforces the constraint; the schema just passes it through.
+  password: z.string().optional(),
+});
 
 // ============================================================
 // TYPE EXPORTS
@@ -215,3 +234,5 @@ export type PasswordResetInput = z.infer<typeof passwordResetSchema>;
 export type EmailVerificationInput = z.infer<typeof emailVerificationSchema>;
 export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
 export type ResendVerificationInput = z.infer<typeof resendVerificationSchema>;
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
+export type DeleteAccountInput = z.infer<typeof deleteAccountSchema>;

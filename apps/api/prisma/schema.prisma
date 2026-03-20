@@ -29,6 +29,14 @@ model Developer {
   projects           Project[]
   sessions           Session[]
   verificationTokens VerificationToken[]
+  authEvents         AuthEvent[]
+
+  // Team: slots where this developer is the workspace owner
+  teamMembersOwned TeamMember[] @relation("TeamOwner")
+  // Team: slots where this developer is a collaborator on someone else's workspace
+  teamMemberships  TeamMember[] @relation("TeamMember")
+  // Invites this developer has sent to others
+  teamInvitesSent  TeamInvite[] @relation("TeamInviteOwner")
 
   @@map("developers")
 }
@@ -47,6 +55,7 @@ model Project {
   endUsers      EndUser[]
   organizations Organization[]
   webhooks      Webhook[]
+  authEvents    AuthEvent[]
 
   @@index([developerId])
   @@map("projects")
@@ -56,13 +65,13 @@ model ApiKey {
   id         String     @id @default(cuid())
   projectId  String     @map("project_id")
   name       String
-  keyHash    String     @unique @map("key_hash")
-  keyPrefix  String     @map("key_prefix")
+  keyHash    String     @unique @map("key_hash") // SHA-256 of full key — never stored plaintext
+  keyPrefix  String     @map("key_prefix") // first ~16 chars for display (qlx_pub_xxxx)
   type       ApiKeyType @default(PUBLISHABLE)
   lastUsedAt DateTime?  @map("last_used_at")
   expiresAt  DateTime?  @map("expires_at")
   createdAt  DateTime   @default(now()) @map("created_at")
-  revokedAt  DateTime?  @map("revoked_at")
+  revokedAt  DateTime?  @map("revoked_at") // null = active; set = revoked
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
@@ -101,6 +110,7 @@ model EndUser {
   twoFactorBackupCodes TwoFactorBackupCode[]
   organizationMembers  OrganizationMember[]
   verificationTokens   VerificationToken[]
+  authEvents           AuthEvent[]
 
   @@unique([projectId, email])
   @@index([projectId])
@@ -198,6 +208,73 @@ enum TokenType {
   // existing account. The token field stores "<code>:<argon2hash>" so no
   // extra column is needed.
   ACCOUNT_LINK
+}
+
+// ============================================================
+// DEVELOPER TEAM — Collaborators on a developer's Quellix workspace
+// ============================================================
+
+// A confirmed team membership: memberId can access ownerId's workspace.
+model TeamMember {
+  id        String   @id @default(cuid())
+  ownerId   String   @map("owner_id") // the developer who owns the workspace
+  memberId  String   @map("member_id") // the collaborator being granted access
+  role      String   @default("member") // "member" | "admin"
+  createdAt DateTime @default(now()) @map("created_at")
+
+  owner  Developer @relation("TeamOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  member Developer @relation("TeamMember", fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@unique([ownerId, memberId])
+  @@index([ownerId])
+  @@index([memberId])
+  @@map("team_members")
+}
+
+// A pending invite to join someone's workspace. The invited person may or may not
+// have a Quellix account yet — they accept by visiting the link in their email.
+model TeamInvite {
+  id         String    @id @default(cuid())
+  ownerId    String    @map("owner_id")
+  email      String // invitee email address
+  role       String    @default("member") // "member" | "admin"
+  token      String    @unique // secure random token for the accept link
+  expiresAt  DateTime  @map("expires_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  acceptedAt DateTime? @map("accepted_at")
+
+  owner Developer @relation("TeamInviteOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@index([ownerId])
+  @@index([token])
+  @@index([email])
+  @@map("team_invites")
+}
+
+// ============================================================
+// AUTH EVENTS — Audit log for end-user auth activity per project
+// ============================================================
+
+model AuthEvent {
+  id          String   @id @default(cuid())
+  projectId   String?  @map("project_id")
+  developerId String?  @map("developer_id") // set for developer-console auth events
+  endUserId   String?  @map("end_user_id") // set for end-user auth events
+  type        String // "login" | "register" | "logout" | "password_reset" | "email_verified" | etc.
+  metadata    Json? // additional event-specific data (provider, error, etc.)
+  ipAddress   String?  @map("ip_address")
+  userAgent   String?  @map("user_agent")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  project   Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  developer Developer? @relation(fields: [developerId], references: [id], onDelete: SetNull)
+  endUser   EndUser?   @relation(fields: [endUserId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+  @@index([developerId])
+  @@index([endUserId])
+  @@index([createdAt])
+  @@map("auth_events")
 }
 
 // ============================================================
