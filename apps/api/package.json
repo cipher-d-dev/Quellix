@@ -12,7 +12,6 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "packageManager": "pnpm@10.29.3",
   "dependencies": {
     "@prisma/adapter-pg": "^7.4.1",
     "@prisma/client": "^7.4.1",
@@ -29,8 +28,10 @@
     "node-fetch": "^3.3.2",
     "prisma": "^7.4.1",
     "resend": "^6.9.4",
-    "zod": "^4.3.6"
-  },
+    "zod": "^4.3.6",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3"
+  },  
   "devDependencies": {
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
@@ -38,8 +39,6 @@
     "@types/multer": "^2.1.0",
     "@types/node-fetch": "^2.6.13",
     "nodemon": "^3.1.11",
-    "ts-node": "^10.9.2",
-    "tsup": "^8.5.1",
-    "typescript": "^5.9.3"
+    "ts-node": "^10.9.2"
   }
 }
