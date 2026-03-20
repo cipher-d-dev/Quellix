@@ -1,22 +1,100 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Badge } from "../../components/ui/Badge";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { Modal } from "../../components/ui/Modal";
 import { Input } from "../../components/ui/Input";
-
-interface Member {
-  id: string;
-  email: string;
-  name: string;
-  role: string;
-  joinedAt: string;
-}
+import { Spinner } from "../../components/ui/Spinner";
+import { Avatar } from "../../components/ui/Avatar";
+import {
+  teamService,
+  type TeamMember,
+  type TeamInvite,
+} from "../../api/team.api";
+import type { AxiosError } from "axios";
 
 export function Team() {
-  const [members] = useState<Member[]>([]);
-  const [open, setOpen] = useState(false);
+  const [members, setMembers] = useState<TeamMember[]>([]);
+  const [invites, setInvites] = useState<TeamInvite[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Invite
+  const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
-  const [role, setRole] = useState("member");
+  const [role, setRole] = useState<"member" | "admin">("member");
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [inviteError, setInviteError] = useState("");
+  const [inviteSuccess, setInviteSuccess] = useState("");
+
+  // Remove member confirm
+  const [removeMember, setRemoveMember] = useState<TeamMember | null>(null);
+  const [removeLoading, setRemoveLoading] = useState(false);
+
+  useEffect(() => {
+    Promise.all([teamService.listMembers(), teamService.listInvites()])
+      .then(([membersRes, invitesRes]) => {
+        setMembers(membersRes.data.data.members);
+        setInvites(invitesRes.data.data.invites);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  // ── Invite ─────────────────────────────────────────────────────────────────
+
+  function openInvite() {
+    setInviteEmail("");
+    setRole("member");
+    setInviteError("");
+    setInviteSuccess("");
+    setInviteOpen(true);
+  }
+
+  async function handleSendInvite() {
+    if (!inviteEmail.trim()) return;
+    setInviteError("");
+    setInviteSuccess("");
+    setInviteLoading(true);
+    try {
+      const { data } = await teamService.sendInvite({
+        email: inviteEmail.trim().toLowerCase(),
+        role,
+      });
+      setInvites((prev) => [data.data.invite, ...prev]);
+      setInviteSuccess(`Invite sent to ${inviteEmail}.`);
+      setInviteEmail("");
+    } catch (err) {
+      const e = err as AxiosError<{ error?: string }>;
+      setInviteError(e.response?.data?.error ?? "Failed to send invite.");
+    } finally {
+      setInviteLoading(false);
+    }
+  }
+
+  // ── Cancel invite ──────────────────────────────────────────────────────────
+
+  async function handleCancelInvite(id: string) {
+    try {
+      await teamService.cancelInvite(id);
+      setInvites((prev) => prev.filter((i) => i.id !== id));
+    } catch {}
+  }
+
+  // ── Remove member ──────────────────────────────────────────────────────────
+
+  async function handleRemoveMember() {
+    if (!removeMember) return;
+    setRemoveLoading(true);
+    try {
+      await teamService.removeMember(removeMember.id);
+      setMembers((prev) => prev.filter((m) => m.id !== removeMember.id));
+      setRemoveMember(null);
+    } catch {
+    } finally {
+      setRemoveLoading(false);
+    }
+  }
+
+  const hasAnyData = members.length > 0 || invites.length > 0;
 
   return (
     <div
@@ -26,6 +104,7 @@ export function Team() {
         margin: "0 auto",
       }}
     >
+      {/* Header */}
       <div
         className="animate-fade-in"
         style={{
@@ -53,7 +132,7 @@ export function Team() {
             Manage organization members and their access levels.
           </p>
         </div>
-        <button onClick={() => setOpen(true)} className="btn-primary">
+        <button onClick={openInvite} className="btn-primary">
           <svg
             width="12"
             height="12"
@@ -70,16 +149,20 @@ export function Team() {
         </button>
       </div>
 
-      <div
-        className="animate-slide-up"
-        style={{
-          borderRadius: 12,
-          background: "#111",
-          border: "1px solid rgba(255,255,255,0.07)",
-          overflow: "hidden",
-        }}
-      >
-        {members.length === 0 ? (
+      {loading ? (
+        <div style={{ padding: 40, display: "flex", justifyContent: "center" }}>
+          <Spinner size={18} />
+        </div>
+      ) : !hasAnyData ? (
+        <div
+          className="animate-slide-up"
+          style={{
+            borderRadius: 12,
+            background: "#111",
+            border: "1px solid rgba(255,255,255,0.07)",
+            overflow: "hidden",
+          }}
+        >
           <EmptyState
             icon={
               <svg
@@ -100,195 +183,352 @@ export function Team() {
             title="No team members"
             description="Invite colleagues to collaborate on your projects and manage authentication together."
             action={
-              <button onClick={() => setOpen(true)} className="btn-primary">
+              <button onClick={openInvite} className="btn-primary">
                 Invite Member
               </button>
             }
           />
-        ) : (
-          <>
-            {/* Desktop table */}
-            <div className="hidden md:block">
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Member</th>
-                    <th>Email</th>
-                    <th>Role</th>
-                    <th>Joined</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {members.map((m) => (
-                    <tr key={m.id}>
-                      <td>
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: 10,
-                          }}
-                        >
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          {/* Members */}
+          {members.length > 0 && (
+            <div className="animate-slide-up">
+              <h2
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: "#555",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.08em",
+                  margin: "0 0 10px",
+                }}
+              >
+                Members · {members.length}
+              </h2>
+              <div
+                style={{
+                  borderRadius: 12,
+                  background: "#111",
+                  border: "1px solid rgba(255,255,255,0.07)",
+                  overflow: "hidden",
+                }}
+              >
+                {/* Desktop */}
+                <div className="hidden md:block">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Member</th>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th>Joined</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {members.map((m) => (
+                        <tr key={m.id}>
+                          <td>
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 10,
+                              }}
+                            >
+                              <Avatar
+                                avatarUrl={m.developer.avatarUrl}
+                                name={m.developer.fullName}
+                                email={m.developer.email}
+                                size={28}
+                                fontSize={11}
+                              />
+                              <span
+                                style={{ fontWeight: 500, color: "#ededed" }}
+                              >
+                                {m.developer.fullName ??
+                                  m.developer.username ??
+                                  "—"}
+                              </span>
+                            </div>
+                          </td>
+                          <td>{m.developer.email}</td>
+                          <td>
+                            <Badge
+                              variant={
+                                m.role === "admin" ? "indigo" : "default"
+                              }
+                            >
+                              {m.role}
+                            </Badge>
+                          </td>
+                          <td>{new Date(m.joinedAt).toLocaleDateString()}</td>
+                          <td style={{ textAlign: "right" }}>
+                            <button
+                              onClick={() => setRemoveMember(m)}
+                              style={{
+                                fontSize: 12,
+                                color: "rgba(248,113,113,0.7)",
+                                background: "none",
+                                border: "none",
+                                cursor: "pointer",
+                                transition: "color 0.15s",
+                              }}
+                              onMouseEnter={(e) =>
+                                (e.currentTarget.style.color = "#f87171")
+                              }
+                              onMouseLeave={(e) =>
+                                (e.currentTarget.style.color =
+                                  "rgba(248,113,113,0.7)")
+                              }
+                            >
+                              Remove
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Mobile */}
+                <div
+                  className="md:hidden"
+                  style={{ display: "flex", flexDirection: "column" }}
+                >
+                  {members.map((m, i) => (
+                    <div
+                      key={m.id}
+                      style={{
+                        padding: "16px",
+                        borderBottom:
+                          i < members.length - 1
+                            ? "1px solid rgba(255,255,255,0.05)"
+                            : "none",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                          marginBottom: 8,
+                        }}
+                      >
+                        <Avatar
+                          avatarUrl={m.developer.avatarUrl}
+                          name={m.developer.fullName}
+                          email={m.developer.email}
+                          size={32}
+                          fontSize={12}
+                        />
+                        <div style={{ flex: 1 }}>
                           <div
                             style={{
-                              width: 28,
-                              height: 28,
-                              borderRadius: "50%",
-                              background: "rgba(99,102,241,0.12)",
-                              border: "1px solid rgba(99,102,241,0.2)",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              fontSize: 11,
+                              fontSize: 13,
                               fontWeight: 600,
-                              color: "#818cf8",
-                              flexShrink: 0,
+                              color: "#ededed",
                             }}
                           >
-                            {m.name.charAt(0).toUpperCase()}
+                            {m.developer.fullName ??
+                              m.developer.username ??
+                              "—"}
                           </div>
-                          <span style={{ fontWeight: 500, color: "#ededed" }}>
-                            {m.name}
-                          </span>
+                          <div style={{ fontSize: 12, color: "#555" }}>
+                            {m.developer.email}
+                          </div>
                         </div>
-                      </td>
-                      <td>{m.email}</td>
-                      <td>
                         <Badge
                           variant={m.role === "admin" ? "indigo" : "default"}
                         >
                           {m.role}
                         </Badge>
-                      </td>
-                      <td>{new Date(m.joinedAt).toLocaleDateString()}</td>
-                      <td style={{ textAlign: "right" }}>
+                      </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                        }}
+                      >
+                        <span style={{ fontSize: 12, color: "#555" }}>
+                          Joined {new Date(m.joinedAt).toLocaleDateString()}
+                        </span>
                         <button
+                          onClick={() => setRemoveMember(m)}
                           style={{
                             fontSize: 12,
                             color: "rgba(248,113,113,0.7)",
                             background: "none",
                             border: "none",
                             cursor: "pointer",
-                            transition: "color 0.15s",
                           }}
-                          onMouseEnter={(e) =>
-                            (e.currentTarget.style.color = "#f87171")
-                          }
-                          onMouseLeave={(e) =>
-                            (e.currentTarget.style.color =
-                              "rgba(248,113,113,0.7)")
-                          }
                         >
                           Remove
                         </button>
-                      </td>
-                    </tr>
+                      </div>
+                    </div>
                   ))}
-                </tbody>
-              </table>
+                </div>
+              </div>
             </div>
-            {/* Mobile cards */}
-            <div
-              className="md:hidden"
-              style={{ display: "flex", flexDirection: "column" }}
-            >
-              {members.map((m, i) => (
-                <div
-                  key={m.id}
-                  style={{
-                    padding: "16px",
-                    borderBottom:
-                      i < members.length - 1
-                        ? "1px solid rgba(255,255,255,0.05)"
-                        : "none",
-                  }}
-                >
+          )}
+
+          {/* Pending Invites */}
+          {invites.length > 0 && (
+            <div className="animate-slide-up">
+              <h2
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: "#555",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.08em",
+                  margin: "0 0 10px",
+                }}
+              >
+                Pending Invites · {invites.length}
+              </h2>
+              <div
+                style={{
+                  borderRadius: 12,
+                  background: "#111",
+                  border: "1px solid rgba(255,255,255,0.07)",
+                  overflow: "hidden",
+                }}
+              >
+                {invites.map((inv, i) => (
                   <div
+                    key={inv.id}
                     style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 10,
-                      marginBottom: 8,
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: 32,
-                        height: 32,
-                        borderRadius: "50%",
-                        background: "rgba(99,102,241,0.12)",
-                        border: "1px solid rgba(99,102,241,0.2)",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 12,
-                        fontWeight: 600,
-                        color: "#818cf8",
-                        flexShrink: 0,
-                      }}
-                    >
-                      {m.name.charAt(0).toUpperCase()}
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <div
-                        style={{
-                          fontSize: 13,
-                          fontWeight: 600,
-                          color: "#ededed",
-                        }}
-                      >
-                        {m.name}
-                      </div>
-                      <div style={{ fontSize: 12, color: "#555" }}>
-                        {m.email}
-                      </div>
-                    </div>
-                    <Badge variant={m.role === "admin" ? "indigo" : "default"}>
-                      {m.role}
-                    </Badge>
-                  </div>
-                  <div
-                    style={{
+                      padding: "14px 20px",
+                      borderBottom:
+                        i < invites.length - 1
+                          ? "1px solid rgba(255,255,255,0.05)"
+                          : "none",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "space-between",
+                      gap: 12,
+                      flexWrap: "wrap",
                     }}
                   >
-                    <span style={{ fontSize: 12, color: "#555" }}>
-                      Joined {new Date(m.joinedAt).toLocaleDateString()}
-                    </span>
-                    <button
-                      style={{
-                        fontSize: 12,
-                        color: "rgba(248,113,113,0.7)",
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                      }}
+                    <div>
+                      <p
+                        style={{
+                          fontSize: 13,
+                          color: "#ededed",
+                          margin: 0,
+                          fontWeight: 500,
+                        }}
+                      >
+                        {inv.email}
+                      </p>
+                      <p
+                        style={{
+                          fontSize: 11,
+                          color: "#555",
+                          margin: "3px 0 0",
+                        }}
+                      >
+                        Expires {new Date(inv.expiresAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <div
+                      style={{ display: "flex", alignItems: "center", gap: 12 }}
                     >
-                      Remove
-                    </button>
+                      <Badge
+                        variant={inv.role === "admin" ? "indigo" : "default"}
+                      >
+                        {inv.role}
+                      </Badge>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          padding: "2px 8px",
+                          borderRadius: 99,
+                          background: "rgba(250,204,21,0.08)",
+                          border: "1px solid rgba(250,204,21,0.2)",
+                          color: "#facc15",
+                        }}
+                      >
+                        Pending
+                      </span>
+                      <button
+                        onClick={() => handleCancelInvite(inv.id)}
+                        style={{
+                          fontSize: 12,
+                          color: "#555",
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          transition: "color 0.15s",
+                        }}
+                        onMouseEnter={(e) =>
+                          (e.currentTarget.style.color = "#f87171")
+                        }
+                        onMouseLeave={(e) =>
+                          (e.currentTarget.style.color = "#555")
+                        }
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
+      {/* Invite Modal */}
       <Modal
-        open={open}
-        onClose={() => setOpen(false)}
+        open={inviteOpen}
+        onClose={() => setInviteOpen(false)}
         title="Invite Team Member"
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {inviteError && (
+            <div
+              style={{
+                padding: "10px 14px",
+                borderRadius: 8,
+                fontSize: 12,
+                color: "#f87171",
+                background: "rgba(239,68,68,0.07)",
+                border: "1px solid rgba(239,68,68,0.2)",
+              }}
+            >
+              {inviteError}
+            </div>
+          )}
+          {inviteSuccess && (
+            <div
+              style={{
+                padding: "10px 14px",
+                borderRadius: 8,
+                fontSize: 12,
+                color: "#4ade80",
+                background: "rgba(34,197,94,0.07)",
+                border: "1px solid rgba(34,197,94,0.2)",
+              }}
+            >
+              {inviteSuccess}
+            </div>
+          )}
           <Input
             label="Email Address"
             type="email"
             placeholder="colleague@company.com"
             value={inviteEmail}
-            onChange={(e) => setInviteEmail(e.target.value)}
+            onChange={(e) => {
+              setInviteEmail(e.target.value);
+              setInviteError("");
+              setInviteSuccess("");
+            }}
+            autoFocus
           />
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <label
@@ -303,7 +543,7 @@ export function Team() {
               Role
             </label>
             <div style={{ display: "flex", gap: 8 }}>
-              {["member", "admin"].map((r) => (
+              {(["member", "admin"] as const).map((r) => (
                 <button
                   key={r}
                   onClick={() => setRole(r)}
@@ -331,10 +571,51 @@ export function Team() {
             </div>
           </div>
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-            <button onClick={() => setOpen(false)} className="btn-secondary">
+            <button
+              onClick={() => setInviteOpen(false)}
+              className="btn-secondary"
+            >
+              Close
+            </button>
+            <button
+              onClick={handleSendInvite}
+              disabled={inviteLoading || !inviteEmail.trim()}
+              className="btn-primary"
+            >
+              {inviteLoading ? <Spinner size={13} /> : "Send Invite"}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Remove Member Confirm */}
+      <Modal
+        open={!!removeMember}
+        onClose={() => setRemoveMember(null)}
+        title="Remove Member"
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <p style={{ fontSize: 13, color: "#aaa", margin: 0 }}>
+            Remove{" "}
+            <strong style={{ color: "#ededed" }}>
+              {removeMember?.developer.email}
+            </strong>{" "}
+            from your team? They'll lose access to your workspace immediately.
+          </p>
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <button
+              onClick={() => setRemoveMember(null)}
+              className="btn-secondary"
+            >
               Cancel
             </button>
-            <button className="btn-primary">Send Invite</button>
+            <button
+              onClick={handleRemoveMember}
+              disabled={removeLoading}
+              className="btn-danger"
+            >
+              {removeLoading ? <Spinner size={13} /> : "Remove"}
+            </button>
           </div>
         </div>
       </Modal>

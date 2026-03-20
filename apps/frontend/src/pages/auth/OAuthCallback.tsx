@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { setAccessToken } from "../../api/axiosInstance";
 import { authService } from "../../api/auth.api";
 import { useAuth } from "../../context/AuthContext";
@@ -18,10 +18,11 @@ const OAUTH_ERRORS: Record<string, string> = {
 export function OAuthCallback() {
   const navigate = useNavigate();
   const { setDeveloper } = useAuth();
+  const [searchParams] = useSearchParams();
   const [error, setError] = useState("");
 
   useEffect(() => {
-    // Check for error params first (both in fragment and query string)
+    // Read error from fragment or query string
     const fragment = window.location.hash.slice(1);
     const fragParams = new URLSearchParams(fragment);
     const queryParams = new URLSearchParams(window.location.search);
@@ -34,33 +35,34 @@ export function OAuthCallback() {
 
     // Read access token from URL fragment
     const token = fragParams.get("token");
-
     if (!token) {
       setError("Missing authentication token. Please try signing in again.");
       return;
     }
 
+    // Read the optional ?next= redirect target that was threaded through the
+    // OAuth state param by the backend.  Falls back to /dashboard.
+    const nextPath = queryParams.get("next");
+
     // Store token in memory so axios attaches it as Bearer
     setAccessToken(token);
 
-    // The refresh_token httpOnly cookie was already set by the server.
-    // Calling refresh() here re-validates the session AND returns the
-    // developer object — no separate /me call needed.
+    // Re-validate the session via refresh — also returns the developer object.
     authService
       .refresh()
       .then(({ data }) => {
         if (data.success && data.data) {
           setAccessToken(data.data.accessToken);
           setDeveloper(data.data.developer);
-          navigate("/dashboard", { replace: true });
+          navigate(nextPath ?? "/dashboard", { replace: true });
         } else {
           setError("Could not load your profile. Please try signing in again.");
         }
       })
       .catch(() => {
-        // Fallback: refresh failed but the cookie might still be valid.
-        // Navigate to dashboard and let AuthContext's own silent refresh handle it.
-        navigate("/dashboard", { replace: true });
+        // Refresh failed but the cookie might still be valid — let AuthContext
+        // sort it out on the next page load.
+        navigate(nextPath ?? "/dashboard", { replace: true });
       });
   }, [navigate, setDeveloper]);
 

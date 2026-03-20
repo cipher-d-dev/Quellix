@@ -46,9 +46,6 @@ export const authService = {
 
   refresh: () => api.post<AuthRes>("/auth/refresh"),
 
-  // Completes the account-link flow: submits the code emailed during a
-  // register() ACCOUNT_LINKABLE collision to add password login to an
-  // existing OAuth-only account.
   linkPassword: (p: { email: string; code: string }) =>
     api.post<AuthRes>("/auth/link-password", p),
 
@@ -87,4 +84,10 @@ export const developerService = {
   },
 
   deleteAvatar: () => api.delete<DevRes>("/developer/avatar"),
+
+  changePassword: (p: { currentPassword: string; newPassword: string }) =>
+    api.post<OkRes>("/developer/change-password", p),
+
+  deleteAccount: (p: { password?: string }) =>
+    api.delete<OkRes>("/developer/account", { data: p }),
 };

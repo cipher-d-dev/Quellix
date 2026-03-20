@@ -14,6 +14,7 @@ import { Dashboard } from "./pages/dashboard/Dashboard";
 import { Projects } from "./pages/projects/Projects";
 import { ApiKeys } from "./pages/api-keys/ApiKeys";
 import { Team } from "./pages/team/Team";
+import { TeamAccept } from "./pages/team/TeamAccept";
 import { Settings } from "./pages/settings/Settings";
 import { NotFound } from "./pages/NotFound";
 import { Landing } from "./pages/LandingPage";
@@ -33,11 +34,14 @@ export default function App() {
             <Route path="/reset-password" element={<ResetPassword />} />
           </Route>
 
-          {/* OAuth callback — accessible without auth (handles the token itself) */}
+          {/* OAuth callback — handles the token itself */}
           <Route path="/oauth/callback" element={<OAuthCallback />} />
 
           {/* Verify email — accessible logged-in or out */}
           <Route path="/verify-email" element={<VerifyEmail />} />
+
+          {/* Team invite accept — public page, auth state handled inside */}
+          <Route path="/team/accept" element={<TeamAccept />} />
 
           {/* Protected */}
           <Route element={<ProtectedRoute />}>

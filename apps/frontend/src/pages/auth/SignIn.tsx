@@ -28,10 +28,17 @@ export function SignIn() {
   const navigate = useNavigate();
   const location = useLocation();
   const { setDeveloper } = useAuth();
-  const from = (location.state as any)?.from?.pathname ?? "/dashboard";
 
   const [searchParams] = useSearchParams();
   const oauthError = searchParams.get("error");
+
+  // Priority order for post-login redirect:
+  //   1. ?next= param (used by TeamAccept and other deep links)
+  //   2. React Router state.from (set by ProtectedRoute when redirecting to /signin)
+  //   3. Default: /dashboard
+  const nextParam = searchParams.get("next");
+  const fromState = (location.state as any)?.from?.pathname;
+  const redirectTo = nextParam ?? fromState ?? "/dashboard";
 
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
@@ -52,17 +59,23 @@ export function SignIn() {
       });
       setAccessToken(data.data.accessToken);
       setDeveloper(data.data.developer);
-      navigate(from, { replace: true });
+      navigate(redirectTo, { replace: true });
     } catch (err) {
       const e = err as AxiosError<{ error?: string }>;
       setError(e.response?.data?.error ?? "Something went wrong. Try again.");
-      // After any failed login attempt, show the GitHub hint.
-      // We show it regardless of failure reason so we don't reveal
-      // which specific emails in our DB use GitHub OAuth.
       setShowGithubHint(true);
     } finally {
       setLoading(false);
     }
+  }
+
+  // When redirecting to GitHub OAuth we embed the ?next= value in the state
+  // param so the callback can recover it after the OAuth round-trip.
+  function handleGithubSignIn() {
+    setGithubLoading(true);
+    const url = new URL(GITHUB_URL);
+    if (nextParam) url.searchParams.set("next", nextParam);
+    window.location.href = url.toString();
   }
 
   const displayError = oauthError
@@ -216,14 +229,11 @@ export function SignIn() {
         />
       </div>
 
-      {/* GitHub OAuth button */}
+      {/* GitHub OAuth */}
       <button
         type="button"
         disabled={githubLoading}
-        onClick={() => {
-          setGithubLoading(true);
-          window.location.href = GITHUB_URL;
-        }}
+        onClick={handleGithubSignIn}
         className="flex items-center justify-center gap-2.5 w-full px-4 py-[7px] text-sm font-medium rounded-md transition-all duration-100 select-none"
         style={{
           background: "#161616",
@@ -231,7 +241,9 @@ export function SignIn() {
           color: githubLoading ? "#555" : "#ededed",
           cursor: githubLoading ? "default" : "pointer",
         }}
-        onMouseEnter={(e) => !githubLoading && (e.currentTarget.style.background = "#1c1c1c")}
+        onMouseEnter={(e) =>
+          !githubLoading && (e.currentTarget.style.background = "#1c1c1c")
+        }
         onMouseLeave={(e) => (e.currentTarget.style.background = "#161616")}
       >
         {githubLoading ? (

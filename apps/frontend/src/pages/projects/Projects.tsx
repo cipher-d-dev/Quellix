@@ -1,22 +1,108 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { Modal } from "../../components/ui/Modal";
 import { Input } from "../../components/ui/Input";
-import { Badge } from "../../components/ui/Badge";
-
-interface Project {
-  id: string;
-  name: string;
-  slug: string;
-  createdAt: string;
-  keyCount: number;
-  userCount: number;
-}
+import { Spinner } from "../../components/ui/Spinner";
+import { projectService, type Project } from "../../api/project.api";
+import type { AxiosError } from "axios";
 
 export function Projects() {
-  const [projects] = useState<Project[]>([]);
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Create
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createName, setCreateName] = useState("");
+  const [createLoading, setCreateLoading] = useState(false);
+  const [createError, setCreateError] = useState("");
+
+  // Rename
+  const [renameProject, setRenameProject] = useState<Project | null>(null);
+  const [renameName, setRenameName] = useState("");
+  const [renameLoading, setRenameLoading] = useState(false);
+  const [renameError, setRenameError] = useState("");
+
+  // Delete
+  const [deleteProject, setDeleteProject] = useState<Project | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+
+  // Newly created key reveal
+  const [newProjectId, setNewProjectId] = useState<string | null>(null);
+
+  useEffect(() => {
+    projectService
+      .list()
+      .then(({ data }) => setProjects(data.data.projects))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  // ── Create ─────────────────────────────────────────────────────────────────
+
+  async function handleCreate() {
+    if (!createName.trim()) return;
+    setCreateError("");
+    setCreateLoading(true);
+    try {
+      const { data } = await projectService.create({ name: createName.trim() });
+      setProjects((prev) => [data.data.project, ...prev]);
+      setNewProjectId(data.data.project.id);
+      setCreateOpen(false);
+      setCreateName("");
+    } catch (err) {
+      const e = err as AxiosError<{ error?: string }>;
+      setCreateError(e.response?.data?.error ?? "Failed to create project.");
+    } finally {
+      setCreateLoading(false);
+    }
+  }
+
+  // ── Rename ─────────────────────────────────────────────────────────────────
+
+  function openRename(p: Project) {
+    setRenameProject(p);
+    setRenameName(p.name);
+    setRenameError("");
+  }
+
+  async function handleRename() {
+    if (!renameProject || !renameName.trim()) return;
+    setRenameError("");
+    setRenameLoading(true);
+    try {
+      const { data } = await projectService.update(renameProject.id, {
+        name: renameName.trim(),
+      });
+      setProjects((prev) =>
+        prev.map((p) => (p.id === renameProject.id ? data.data.project : p)),
+      );
+      setRenameProject(null);
+    } catch (err) {
+      const e = err as AxiosError<{ error?: string }>;
+      setRenameError(e.response?.data?.error ?? "Failed to rename project.");
+    } finally {
+      setRenameLoading(false);
+    }
+  }
+
+  // ── Delete ─────────────────────────────────────────────────────────────────
+
+  async function handleDelete() {
+    if (!deleteProject) return;
+    setDeleteError("");
+    setDeleteLoading(true);
+    try {
+      await projectService.delete(deleteProject.id);
+      setProjects((prev) => prev.filter((p) => p.id !== deleteProject.id));
+      setDeleteProject(null);
+    } catch (err) {
+      const e = err as AxiosError<{ error?: string }>;
+      setDeleteError(e.response?.data?.error ?? "Failed to delete project.");
+    } finally {
+      setDeleteLoading(false);
+    }
+  }
 
   return (
     <div
@@ -26,6 +112,7 @@ export function Projects() {
         margin: "0 auto",
       }}
     >
+      {/* Header */}
       <div
         className="animate-fade-in"
         style={{
@@ -53,7 +140,13 @@ export function Projects() {
             Each project gets its own API keys and user base.
           </p>
         </div>
-        <button onClick={() => setOpen(true)} className="btn-primary">
+        <button
+          onClick={() => {
+            setCreateError("");
+            setCreateOpen(true);
+          }}
+          className="btn-primary"
+        >
           <svg
             width="12"
             height="12"
@@ -70,6 +163,7 @@ export function Projects() {
         </button>
       </div>
 
+      {/* Table */}
       <div
         className="animate-slide-up"
         style={{
@@ -79,7 +173,13 @@ export function Projects() {
           overflow: "hidden",
         }}
       >
-        {projects.length === 0 ? (
+        {loading ? (
+          <div
+            style={{ padding: 40, display: "flex", justifyContent: "center" }}
+          >
+            <Spinner size={18} />
+          </div>
+        ) : projects.length === 0 ? (
           <EmptyState
             icon={
               <svg
@@ -99,14 +199,17 @@ export function Projects() {
             title="No projects"
             description="Create a project to generate API keys and start authenticating users in your app."
             action={
-              <button onClick={() => setOpen(true)} className="btn-primary">
+              <button
+                onClick={() => setCreateOpen(true)}
+                className="btn-primary"
+              >
                 New Project
               </button>
             }
           />
         ) : (
           <>
-            {/* Desktop table */}
+            {/* Desktop */}
             <div className="hidden md:block">
               <table className="data-table">
                 <thead>
@@ -121,7 +224,15 @@ export function Projects() {
                 </thead>
                 <tbody>
                   {projects.map((p) => (
-                    <tr key={p.id}>
+                    <tr
+                      key={p.id}
+                      style={{
+                        background:
+                          newProjectId === p.id
+                            ? "rgba(99,102,241,0.04)"
+                            : undefined,
+                      }}
+                    >
                       <td style={{ fontWeight: 500, color: "#ededed" }}>
                         {p.name}
                       </td>
@@ -143,31 +254,64 @@ export function Projects() {
                       <td>{p.userCount}</td>
                       <td>{new Date(p.createdAt).toLocaleDateString()}</td>
                       <td style={{ textAlign: "right" }}>
-                        <button
+                        <div
                           style={{
-                            fontSize: 12,
-                            color: "#555",
-                            background: "none",
-                            border: "none",
-                            cursor: "pointer",
-                            transition: "color 0.15s",
+                            display: "flex",
+                            justifyContent: "flex-end",
+                            gap: 12,
                           }}
-                          onMouseEnter={(e) =>
-                            (e.currentTarget.style.color = "#ededed")
-                          }
-                          onMouseLeave={(e) =>
-                            (e.currentTarget.style.color = "#555")
-                          }
                         >
-                          Manage →
-                        </button>
+                          <button
+                            onClick={() => openRename(p)}
+                            style={{
+                              fontSize: 12,
+                              color: "#555",
+                              background: "none",
+                              border: "none",
+                              cursor: "pointer",
+                              transition: "color 0.15s",
+                            }}
+                            onMouseEnter={(e) =>
+                              (e.currentTarget.style.color = "#ededed")
+                            }
+                            onMouseLeave={(e) =>
+                              (e.currentTarget.style.color = "#555")
+                            }
+                          >
+                            Rename
+                          </button>
+                          <button
+                            onClick={() => {
+                              setDeleteError("");
+                              setDeleteProject(p);
+                            }}
+                            style={{
+                              fontSize: 12,
+                              color: "rgba(248,113,113,0.7)",
+                              background: "none",
+                              border: "none",
+                              cursor: "pointer",
+                              transition: "color 0.15s",
+                            }}
+                            onMouseEnter={(e) =>
+                              (e.currentTarget.style.color = "#f87171")
+                            }
+                            onMouseLeave={(e) =>
+                              (e.currentTarget.style.color =
+                                "rgba(248,113,113,0.7)")
+                            }
+                          >
+                            Delete
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            {/* Mobile cards */}
+
+            {/* Mobile */}
             <div
               className="md:hidden"
               style={{ display: "flex", flexDirection: "column" }}
@@ -188,7 +332,7 @@ export function Projects() {
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "space-between",
-                      marginBottom: 10,
+                      marginBottom: 8,
                     }}
                   >
                     <span
@@ -200,17 +344,35 @@ export function Projects() {
                     >
                       {p.name}
                     </span>
-                    <button
-                      style={{
-                        fontSize: 12,
-                        color: "#555",
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Manage →
-                    </button>
+                    <div style={{ display: "flex", gap: 10 }}>
+                      <button
+                        onClick={() => openRename(p)}
+                        style={{
+                          fontSize: 12,
+                          color: "#555",
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Rename
+                      </button>
+                      <button
+                        onClick={() => {
+                          setDeleteError("");
+                          setDeleteProject(p);
+                        }}
+                        style={{
+                          fontSize: 12,
+                          color: "rgba(248,113,113,0.7)",
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </div>
                   <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
                     <span style={{ fontSize: 12, color: "#555" }}>
@@ -233,20 +395,144 @@ export function Projects() {
         )}
       </div>
 
-      <Modal open={open} onClose={() => setOpen(false)} title="New Project">
+      {/* Create Modal */}
+      <Modal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        title="New Project"
+      >
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {createError && (
+            <div
+              style={{
+                padding: "10px 14px",
+                borderRadius: 8,
+                fontSize: 12,
+                color: "#f87171",
+                background: "rgba(239,68,68,0.07)",
+                border: "1px solid rgba(239,68,68,0.2)",
+              }}
+            >
+              {createError}
+            </div>
+          )}
           <Input
             label="Project Name"
             placeholder="My App"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
+            value={createName}
+            onChange={(e) => {
+              setCreateName(e.target.value);
+              setCreateError("");
+            }}
             hint="Used to identify your project in the dashboard."
+            autoFocus
           />
           <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-            <button onClick={() => setOpen(false)} className="btn-secondary">
+            <button
+              onClick={() => setCreateOpen(false)}
+              className="btn-secondary"
+            >
               Cancel
             </button>
-            <button className="btn-primary">Create Project</button>
+            <button
+              onClick={handleCreate}
+              disabled={createLoading || !createName.trim()}
+              className="btn-primary"
+            >
+              {createLoading ? <Spinner size={13} /> : "Create Project"}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Rename Modal */}
+      <Modal
+        open={!!renameProject}
+        onClose={() => setRenameProject(null)}
+        title="Rename Project"
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {renameError && (
+            <div
+              style={{
+                padding: "10px 14px",
+                borderRadius: 8,
+                fontSize: 12,
+                color: "#f87171",
+                background: "rgba(239,68,68,0.07)",
+                border: "1px solid rgba(239,68,68,0.2)",
+              }}
+            >
+              {renameError}
+            </div>
+          )}
+          <Input
+            label="Project Name"
+            value={renameName}
+            onChange={(e) => {
+              setRenameName(e.target.value);
+              setRenameError("");
+            }}
+            autoFocus
+          />
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <button
+              onClick={() => setRenameProject(null)}
+              className="btn-secondary"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleRename}
+              disabled={renameLoading || !renameName.trim()}
+              className="btn-primary"
+            >
+              {renameLoading ? <Spinner size={13} /> : "Save"}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Delete Confirm Modal */}
+      <Modal
+        open={!!deleteProject}
+        onClose={() => setDeleteProject(null)}
+        title="Delete Project"
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {deleteError && (
+            <div
+              style={{
+                padding: "10px 14px",
+                borderRadius: 8,
+                fontSize: 12,
+                color: "#f87171",
+                background: "rgba(239,68,68,0.07)",
+                border: "1px solid rgba(239,68,68,0.2)",
+              }}
+            >
+              {deleteError}
+            </div>
+          )}
+          <p style={{ fontSize: 13, color: "#aaa", margin: 0 }}>
+            Are you sure you want to delete{" "}
+            <strong style={{ color: "#ededed" }}>{deleteProject?.name}</strong>?
+            This will permanently remove all its API keys and end users.
+          </p>
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <button
+              onClick={() => setDeleteProject(null)}
+              className="btn-secondary"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleDelete}
+              disabled={deleteLoading}
+              className="btn-danger"
+            >
+              {deleteLoading ? <Spinner size={13} /> : "Delete Project"}
+            </button>
           </div>
         </div>
       </Modal>

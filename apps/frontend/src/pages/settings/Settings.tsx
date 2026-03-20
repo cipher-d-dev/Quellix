@@ -1,9 +1,11 @@
 import { useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { developerService } from "../../api/auth.api";
 import { Input } from "../../components/ui/Input";
 import { Avatar } from "../../components/ui/Avatar";
 import { Spinner } from "../../components/ui/Spinner";
+import { Modal } from "../../components/ui/Modal";
 import type { AxiosError } from "axios";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -55,7 +57,8 @@ function Alert({
 // ── Main ───────────────────────────────────────────────────────────────────
 
 export function Settings() {
-  const { developer, setDeveloper } = useAuth();
+  const { developer, setDeveloper, logout } = useAuth();
+  const navigate = useNavigate();
 
   // Profile
   const [fullName, setFullName] = useState(developer?.fullName ?? "");
@@ -85,7 +88,14 @@ export function Settings() {
   } | null>(null);
   const [passLoading, setPassLoading] = useState(false);
 
-  // ── Avatar upload ──────────────────────────────────────────────────────
+  // Delete account
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+
+  // ── Avatar ──────────────────────────────────────────────────────────────
+
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -130,7 +140,8 @@ export function Settings() {
     }
   }
 
-  // ── Profile update ─────────────────────────────────────────────────────
+  // ── Profile ─────────────────────────────────────────────────────────────
+
   async function handleSaveProfile(e: React.FormEvent) {
     e.preventDefault();
     setProfileMsg(null);
@@ -153,7 +164,8 @@ export function Settings() {
     }
   }
 
-  // ── Password change ────────────────────────────────────────────────────
+  // ── Password ─────────────────────────────────────────────────────────────
+
   async function handleChangePass(e: React.FormEvent) {
     e.preventDefault();
     setPassMsg(null);
@@ -163,15 +175,41 @@ export function Settings() {
     }
     setPassLoading(true);
     try {
-      // Reuse reset-password flow by requesting a code first is complex;
-      // for now this is a placeholder — wire to a dedicated change-password endpoint when ready.
-      // TODO: implement POST /api/developer/change-password { currentPassword, newPassword }
+      await developerService.changePassword({
+        currentPassword: currentPass,
+        newPassword: newPass,
+      });
+      setPassMsg({ text: "Password updated.", variant: "success" });
+      setCurrentPass("");
+      setNewPass("");
+      setConfirmPass("");
+    } catch (err) {
+      const e = err as AxiosError<{ error?: string }>;
       setPassMsg({
-        text: "Password change endpoint not yet implemented.",
+        text: e.response?.data?.error ?? "Failed to update password.",
         variant: "error",
       });
     } finally {
       setPassLoading(false);
+    }
+  }
+
+  // ── Delete Account ───────────────────────────────────────────────────────
+
+  async function handleDeleteAccount() {
+    setDeleteError("");
+    setDeleteLoading(true);
+    try {
+      await developerService.deleteAccount({
+        password: deletePassword || undefined,
+      });
+      await logout();
+      navigate("/", { replace: true });
+    } catch (err) {
+      const e = err as AxiosError<{ error?: string }>;
+      setDeleteError(e.response?.data?.error ?? "Failed to delete account.");
+    } finally {
+      setDeleteLoading(false);
     }
   }
 
@@ -217,7 +255,6 @@ export function Settings() {
             flexWrap: "wrap",
           }}
         >
-          {/* Preview */}
           <div style={{ position: "relative", flexShrink: 0 }}>
             <Avatar
               avatarUrl={currentAvatar}
@@ -242,8 +279,6 @@ export function Settings() {
               </div>
             )}
           </div>
-
-          {/* Controls */}
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {avatarMsg && (
               <Alert msg={avatarMsg.text} variant={avatarMsg.variant} />
@@ -297,7 +332,6 @@ export function Settings() {
             gap: 16,
           }}
         >
-          {/* Account info row */}
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <Avatar
               avatarUrl={currentAvatar}
@@ -347,6 +381,20 @@ export function Settings() {
                     GitHub
                   </span>
                 )}
+                {developer?.authProvider === "both" && (
+                  <span
+                    style={{
+                      fontSize: 11,
+                      color: "#818cf8",
+                      background: "rgba(99,102,241,0.1)",
+                      border: "1px solid rgba(99,102,241,0.2)",
+                      borderRadius: 99,
+                      padding: "1px 8px",
+                    }}
+                  >
+                    GitHub + Email
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -387,8 +435,7 @@ export function Settings() {
         </form>
       </section>
 
-      {/* ── Password ── */}
-      {/* Hide password section for GitHub-only accounts */}
+      {/* ── Password (email/both accounts) ── */}
       {developer?.authProvider !== "github" && (
         <section className="animate-slide-up" style={card}>
           <div style={cardHeader}>
@@ -446,8 +493,8 @@ export function Settings() {
         </section>
       )}
 
-      {/* GitHub-only accounts can set a password via forgot-password */}
-      {developer?.authProvider === "github" && !developer.passwordHash && (
+      {/* ── Password (GitHub-only) ── */}
+      {developer?.authProvider === "github" && (
         <section className="animate-slide-up" style={card}>
           <div style={cardHeader}>
             <p style={sectionTitle}>Password</p>
@@ -464,8 +511,8 @@ export function Settings() {
             }}
           >
             <p style={{ fontSize: 13, color: "#555", margin: 0 }}>
-              Your account uses GitHub sign-in. You can set a password using the
-              forgot password flow.
+              Your account uses GitHub sign-in. Set a password via the forgot
+              password flow.
             </p>
             <a
               href="/forgot-password"
@@ -518,14 +565,69 @@ export function Settings() {
               Delete Account
             </p>
             <p style={{ fontSize: 12, color: "#555", margin: "3px 0 0" }}>
-              Permanently delete your account and all associated data.
+              Permanently deletes your account, projects, API keys, and all
+              associated data.
             </p>
           </div>
-          <button className="btn-danger" style={{ flexShrink: 0 }}>
+          <button
+            className="btn-danger"
+            style={{ flexShrink: 0 }}
+            onClick={() => {
+              setDeleteError("");
+              setDeletePassword("");
+              setDeleteOpen(true);
+            }}
+          >
             Delete Account
           </button>
         </div>
       </section>
+
+      {/* Delete Confirm Modal */}
+      <Modal
+        open={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        title="Delete Account"
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <p style={{ fontSize: 13, color: "#aaa", margin: 0 }}>
+            This will permanently delete your account and all data. This action
+            cannot be undone.
+          </p>
+          {deleteError && <Alert msg={deleteError} variant="error" />}
+          {developer?.authProvider !== "github" && (
+            <Input
+              label="Confirm Password"
+              type="password"
+              placeholder="Enter your password to confirm"
+              value={deletePassword}
+              onChange={(e) => {
+                setDeletePassword(e.target.value);
+                setDeleteError("");
+              }}
+              autoFocus
+            />
+          )}
+          <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+            <button
+              onClick={() => setDeleteOpen(false)}
+              className="btn-secondary"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleDeleteAccount}
+              disabled={
+                deleteLoading ||
+                (developer?.authProvider !== "github" && !deletePassword)
+              }
+              className="btn-danger"
+            >
+              {deleteLoading ? <Spinner size={13} /> : "Delete My Account"}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

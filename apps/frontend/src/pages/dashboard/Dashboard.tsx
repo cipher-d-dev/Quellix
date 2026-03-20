@@ -1,23 +1,91 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
+import {
+  dashboardService,
+  type DashboardStats,
+  type RecentProject,
+  type RecentEvent,
+} from "../../api/dashboard.api";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { Avatar } from "../../components/ui/Avatar";
+import { Spinner } from "../../components/ui/Spinner";
 
-const STATS = [
-  { label: "Projects", value: "0" },
-  { label: "API Keys", value: "0" },
-  { label: "End Users", value: "0" },
-  { label: "Auth Events", value: "0" },
-];
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+const EVENT_LABELS: Record<string, string> = {
+  login: "Sign in",
+  register: "Sign up",
+  logout: "Sign out",
+  password_reset: "Password reset",
+  email_verified: "Email verified",
+  oauth_login: "OAuth sign in",
+};
+
+const EVENT_COLORS: Record<string, string> = {
+  login: "#4ade80",
+  register: "#818cf8",
+  logout: "#555",
+  password_reset: "#facc15",
+  email_verified: "#4ade80",
+  oauth_login: "#4ade80",
+};
+
+function eventColor(type: string) {
+  return EVENT_COLORS[type] ?? "#555";
+}
+
+function timeAgo(dateStr: string) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const s = Math.floor(diff / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  return new Date(dateStr).toLocaleDateString();
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export function Dashboard() {
   const { developer } = useAuth();
   const navigate = useNavigate();
+
+  const [stats, setStats] = useState<DashboardStats>({
+    projects: 0,
+    apiKeys: 0,
+    endUsers: 0,
+    authEvents: 0,
+  });
+  const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
+  const [recentEvents, setRecentEvents] = useState<RecentEvent[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    dashboardService
+      .getStats()
+      .then(({ data }) => {
+        setStats(data.data.stats);
+        setRecentProjects(data.data.recentProjects);
+        setRecentEvents(data.data.recentEvents);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
   const first =
     developer?.fullName?.split(" ")[0] ?? developer?.username ?? "there";
   const hour = new Date().getHours();
   const greeting =
     hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+
+  const STATS = [
+    { label: "Projects", value: stats.projects },
+    { label: "API Keys", value: stats.apiKeys },
+    { label: "End Users", value: stats.endUsers },
+    { label: "Auth Events", value: stats.authEvents },
+  ];
 
   return (
     <div
@@ -120,19 +188,31 @@ export function Dashboard() {
                 pointerEvents: "none",
               }}
             />
-            <p
-              style={{
-                fontSize: 28,
-                fontWeight: 700,
-                color: "#fafafa",
-                fontFamily: "monospace",
-                letterSpacing: -1,
-                margin: 0,
-                lineHeight: 1,
-              }}
-            >
-              {s.value}
-            </p>
+            {loading ? (
+              <div
+                style={{
+                  height: 28,
+                  width: 40,
+                  background: "rgba(255,255,255,0.06)",
+                  borderRadius: 6,
+                  marginBottom: 6,
+                }}
+              />
+            ) : (
+              <p
+                style={{
+                  fontSize: 28,
+                  fontWeight: 700,
+                  color: "#fafafa",
+                  fontFamily: "monospace",
+                  letterSpacing: -1,
+                  margin: 0,
+                  lineHeight: 1,
+                }}
+              >
+                {s.value.toLocaleString()}
+              </p>
+            )}
             <p style={{ fontSize: 12, color: "#555", marginTop: 6 }}>
               {s.label}
             </p>
@@ -140,7 +220,7 @@ export function Dashboard() {
         ))}
       </div>
 
-      {/* ── Projects + Events ── */}
+      {/* ── Recent Projects + Auth Events ── */}
       <div
         style={{
           display: "grid",
@@ -149,6 +229,7 @@ export function Dashboard() {
           marginBottom: 24,
         }}
       >
+        {/* Recent Projects */}
         <div
           className="animate-slide-up"
           style={{
@@ -187,35 +268,94 @@ export function Dashboard() {
               View all →
             </button>
           </div>
-          <EmptyState
-            icon={
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              >
-                <rect x="2" y="3" width="20" height="14" rx="2" />
-                <line x1="8" y1="21" x2="16" y2="21" />
-                <line x1="12" y1="17" x2="12" y2="21" />
-              </svg>
-            }
-            title="No projects yet"
-            description="Create your first project to get API keys and start authenticating users."
-            action={
-              <button
-                onClick={() => navigate("/projects")}
-                className="btn-primary"
-              >
-                New Project
-              </button>
-            }
-          />
+          {loading ? (
+            <div
+              style={{ padding: 24, display: "flex", justifyContent: "center" }}
+            >
+              <Spinner size={16} />
+            </div>
+          ) : recentProjects.length === 0 ? (
+            <EmptyState
+              icon={
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                >
+                  <rect x="2" y="3" width="20" height="14" rx="2" />
+                  <line x1="8" y1="21" x2="16" y2="21" />
+                  <line x1="12" y1="17" x2="12" y2="21" />
+                </svg>
+              }
+              title="No projects yet"
+              description="Create your first project to get API keys and start authenticating users."
+              action={
+                <button
+                  onClick={() => navigate("/projects")}
+                  className="btn-primary"
+                >
+                  New Project
+                </button>
+              }
+            />
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              {recentProjects.map((p, i) => (
+                <div
+                  key={p.id}
+                  style={{
+                    padding: "12px 18px",
+                    borderBottom:
+                      i < recentProjects.length - 1
+                        ? "1px solid rgba(255,255,255,0.05)"
+                        : "none",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 12,
+                  }}
+                >
+                  <div>
+                    <p
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 500,
+                        color: "#ededed",
+                        margin: 0,
+                      }}
+                    >
+                      {p.name}
+                    </p>
+                    <p
+                      style={{
+                        fontSize: 11,
+                        color: "#555",
+                        margin: "2px 0 0",
+                        fontFamily: "monospace",
+                      }}
+                    >
+                      {p.slug}
+                    </p>
+                  </div>
+                  <div style={{ display: "flex", gap: 12, flexShrink: 0 }}>
+                    <span style={{ fontSize: 11, color: "#555" }}>
+                      {p.keyCount} keys
+                    </span>
+                    <span style={{ fontSize: 11, color: "#555" }}>
+                      {p.userCount} users
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
+        {/* Auth Events */}
         <div
           className="animate-slide-up"
           style={{
@@ -250,24 +390,95 @@ export function Dashboard() {
               Live
             </span>
           </div>
-          <EmptyState
-            icon={
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              >
-                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-              </svg>
-            }
-            title="No events yet"
-            description="Auth events from your projects will appear here in real time."
-            action={null}
-          />
+          {loading ? (
+            <div
+              style={{ padding: 24, display: "flex", justifyContent: "center" }}
+            >
+              <Spinner size={16} />
+            </div>
+          ) : recentEvents.length === 0 ? (
+            <EmptyState
+              icon={
+                <svg
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                >
+                  <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+                </svg>
+              }
+              title="No events yet"
+              description="Auth events from your projects will appear here in real time."
+              action={null}
+            />
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              {recentEvents.map((e, i) => (
+                <div
+                  key={e.id}
+                  style={{
+                    padding: "10px 18px",
+                    borderBottom:
+                      i < recentEvents.length - 1
+                        ? "1px solid rgba(255,255,255,0.05)"
+                        : "none",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: "50%",
+                      background: eventColor(e.type),
+                      flexShrink: 0,
+                    }}
+                  />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p
+                      style={{
+                        fontSize: 12,
+                        color: "#ededed",
+                        margin: 0,
+                        fontWeight: 500,
+                      }}
+                    >
+                      {EVENT_LABELS[e.type] ?? e.type}
+                      {e.projectName && (
+                        <span style={{ color: "#555", fontWeight: 400 }}>
+                          {" "}
+                          · {e.projectName}
+                        </span>
+                      )}
+                    </p>
+                    {e.userEmail && (
+                      <p
+                        style={{
+                          fontSize: 11,
+                          color: "#555",
+                          margin: "1px 0 0",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {e.userEmail}
+                      </p>
+                    )}
+                  </div>
+                  <span style={{ fontSize: 11, color: "#555", flexShrink: 0 }}>
+                    {timeAgo(e.createdAt)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
