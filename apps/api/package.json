@@ -6,8 +6,8 @@
   "main": "index.ts",
   "scripts": {
     "dev": "nodemon server/src/index",
-    "build": "tsup",
-    "start": "node server/src/index.js"
+    "build": "prisma generate && tsup",
+    "start": "node server/dist/index.js"
   },
   "keywords": [],
   "author": "",
