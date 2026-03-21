@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useAuth } from "../../context/AuthContext";
 import { Badge } from "../../components/ui/Badge";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { Modal } from "../../components/ui/Modal";
@@ -9,6 +10,7 @@ import { projectService, type Project } from "../../api/project.api";
 import type { AxiosError } from "axios";
 
 export function ApiKeys() {
+  const { workspaceOwnerId, canWrite } = useAuth();
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
@@ -30,7 +32,11 @@ export function ApiKeys() {
   const [revokeLoading, setRevokeLoading] = useState(false);
 
   useEffect(() => {
-    Promise.all([apiKeyService.list(), projectService.list()])
+    setLoading(true);
+    Promise.all([
+      apiKeyService.list(undefined, workspaceOwnerId ?? undefined),
+      projectService.list(workspaceOwnerId ?? undefined),
+    ])
       .then(([keysRes, projRes]) => {
         setKeys(keysRes.data.data.apiKeys);
         setProjects(projRes.data.data.projects);
@@ -40,7 +46,7 @@ export function ApiKeys() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [workspaceOwnerId]);
 
   // ── Create ─────────────────────────────────────────────────────────────────
 
@@ -57,11 +63,14 @@ export function ApiKeys() {
     setCreateError("");
     setCreateLoading(true);
     try {
-      const { data } = await apiKeyService.create({
-        projectId,
-        name: name.trim(),
-        type,
-      });
+      const { data } = await apiKeyService.create(
+        {
+          projectId,
+          name: name.trim(),
+          type,
+        },
+        workspaceOwnerId ?? undefined,
+      );
       setKeys((prev) => [data.data.apiKey, ...prev]);
       setCreateOpen(false);
       setRevealKey(data.data.key);
@@ -80,7 +89,10 @@ export function ApiKeys() {
     if (!revokeTarget) return;
     setRevokeLoading(true);
     try {
-      await apiKeyService.revoke(revokeTarget.id);
+      await apiKeyService.revoke(
+        revokeTarget.id,
+        workspaceOwnerId ?? undefined,
+      );
       setKeys((prev) => prev.filter((k) => k.id !== revokeTarget.id));
       setRevokeTarget(null);
     } catch {
@@ -134,25 +146,27 @@ export function ApiKeys() {
             keys.
           </p>
         </div>
-        <button
-          onClick={openCreate}
-          className="btn-primary"
-          disabled={projects.length === 0}
-        >
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            strokeLinecap="round"
+        {canWrite && (
+          <button
+            onClick={openCreate}
+            className="btn-primary"
+            disabled={projects.length === 0}
           >
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-          Add Key
-        </button>
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+            >
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            Add Key
+          </button>
+        )}
       </div>
 
       {/* Info banner */}
@@ -245,7 +259,7 @@ export function ApiKeys() {
             title="No API keys"
             description="Create your first key to start making authenticated requests from your application."
             action={
-              projects.length > 0 ? (
+              canWrite && projects.length > 0 ? (
                 <button onClick={openCreate} className="btn-primary">
                   Add Key
                 </button>
@@ -307,26 +321,28 @@ export function ApiKeys() {
                       </td>
                       <td>{new Date(k.createdAt).toLocaleDateString()}</td>
                       <td style={{ textAlign: "right" }}>
-                        <button
-                          onClick={() => setRevokeTarget(k)}
-                          style={{
-                            fontSize: 12,
-                            color: "rgba(248,113,113,0.7)",
-                            background: "none",
-                            border: "none",
-                            cursor: "pointer",
-                            transition: "color 0.15s",
-                          }}
-                          onMouseEnter={(e) =>
-                            (e.currentTarget.style.color = "#f87171")
-                          }
-                          onMouseLeave={(e) =>
-                            (e.currentTarget.style.color =
-                              "rgba(248,113,113,0.7)")
-                          }
-                        >
-                          Revoke
-                        </button>
+                        {canWrite && (
+                          <button
+                            onClick={() => setRevokeTarget(k)}
+                            style={{
+                              fontSize: 12,
+                              color: "rgba(248,113,113,0.7)",
+                              background: "none",
+                              border: "none",
+                              cursor: "pointer",
+                              transition: "color 0.15s",
+                            }}
+                            onMouseEnter={(e) =>
+                              (e.currentTarget.style.color = "#f87171")
+                            }
+                            onMouseLeave={(e) =>
+                              (e.currentTarget.style.color =
+                                "rgba(248,113,113,0.7)")
+                            }
+                          >
+                            Revoke
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -400,18 +416,20 @@ export function ApiKeys() {
                         ? new Date(k.lastUsedAt).toLocaleDateString()
                         : "Never"}
                     </span>
-                    <button
-                      onClick={() => setRevokeTarget(k)}
-                      style={{
-                        fontSize: 12,
-                        color: "rgba(248,113,113,0.7)",
-                        background: "none",
-                        border: "none",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Revoke
-                    </button>
+                    {canWrite && (
+                      <button
+                        onClick={() => setRevokeTarget(k)}
+                        style={{
+                          fontSize: 12,
+                          color: "rgba(248,113,113,0.7)",
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Revoke
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}

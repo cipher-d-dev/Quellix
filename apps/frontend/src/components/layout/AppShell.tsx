@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { NavLink, useNavigate, Outlet, useLocation } from "react-router-dom";
-import { useAuth } from "../../context/AuthContext";
+import { useAuth, type ActiveWorkspace } from "../../context/AuthContext";
 import { Avatar } from "../ui/Avatar";
 import LOGO from "../../assets/favicon.ico";
 
@@ -15,17 +15,25 @@ const NAV = [
 const BREAKPOINT = 1024;
 
 export function AppShell() {
-  const { developer, logout } = useAuth();
+  const {
+    developer,
+    logout,
+    memberships,
+    activeWorkspace,
+    setActiveWorkspace,
+    workspaceRole,
+  } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const drawerRef = useRef<HTMLDivElement>(null);
+  const switcherRef = useRef<HTMLDivElement>(null);
 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(
     () => window.innerWidth >= BREAKPOINT,
   );
+  const [workspaceSwitcherOpen, setWorkspaceSwitcherOpen] = useState(false);
 
-  // Track viewport width
   useEffect(() => {
     const fn = () => {
       const desktop = window.innerWidth >= BREAKPOINT;
@@ -36,12 +44,10 @@ export function AppShell() {
     return () => window.removeEventListener("resize", fn);
   }, []);
 
-  // Close drawer on route change
   useEffect(() => {
     setMobileOpen(false);
   }, [location.pathname]);
 
-  // Lock body scroll when mobile drawer is open
   useEffect(() => {
     document.body.style.overflow = !isDesktop && mobileOpen ? "hidden" : "";
     return () => {
@@ -49,12 +55,40 @@ export function AppShell() {
     };
   }, [mobileOpen, isDesktop]);
 
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (
+        switcherRef.current &&
+        !switcherRef.current.contains(e.target as Node)
+      ) {
+        setWorkspaceSwitcherOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
   async function handleLogout() {
     await logout();
     navigate("/signin");
   }
 
-  // ── Shared sidebar content ─────────────────────────────────────────────
+  function switchWorkspace(w: ActiveWorkspace | null) {
+    setActiveWorkspace(w);
+    setWorkspaceSwitcherOpen(false);
+    navigate("/dashboard");
+  }
+
+  const currentName = activeWorkspace
+    ? activeWorkspace.ownerName
+    : (developer?.fullName ?? developer?.username ?? "My Workspace");
+  const currentAvatar = activeWorkspace
+    ? activeWorkspace.ownerAvatar
+    : (developer?.avatarUrl ?? null);
+  const currentEmail = activeWorkspace
+    ? activeWorkspace.ownerEmail
+    : (developer?.email ?? "");
+
   const sidebarContent = (
     <>
       {/* Brand */}
@@ -84,7 +118,6 @@ export function AppShell() {
         >
           Quellix
         </span>
-        {/* Close button — only shown inside the mobile drawer */}
         {!isDesktop && (
           <button
             onClick={() => setMobileOpen(false)}
@@ -117,6 +150,276 @@ export function AppShell() {
           </button>
         )}
       </div>
+
+      {/* Workspace switcher */}
+      {memberships.length > 0 && (
+        <div
+          ref={switcherRef}
+          style={{ padding: "8px 8px 0", position: "relative" }}
+        >
+          <button
+            onClick={() => setWorkspaceSwitcherOpen((v) => !v)}
+            style={{
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "8px 10px",
+              borderRadius: 8,
+              background: workspaceSwitcherOpen
+                ? "rgba(255,255,255,0.06)"
+                : "rgba(255,255,255,0.03)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              cursor: "pointer",
+              transition: "all 0.15s",
+            }}
+          >
+            <Avatar
+              avatarUrl={currentAvatar}
+              name={currentName}
+              email={currentEmail}
+              size={22}
+              fontSize={9}
+            />
+            <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+              <p
+                style={{
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: "#ededed",
+                  margin: 0,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {currentName}
+              </p>
+              <p
+                style={{
+                  fontSize: 10,
+                  color: "#555",
+                  margin: 0,
+                  textTransform: "capitalize",
+                }}
+              >
+                {workspaceRole}
+              </p>
+            </div>
+            <svg
+              width="10"
+              height="10"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#555"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+            >
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </button>
+
+          {workspaceSwitcherOpen && (
+            <div
+              style={{
+                position: "absolute",
+                top: "calc(100% + 4px)",
+                left: 8,
+                right: 8,
+                background: "#111",
+                border: "1px solid rgba(255,255,255,0.1)",
+                borderRadius: 10,
+                overflow: "hidden",
+                zIndex: 100,
+                boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+              }}
+            >
+              {/* Own workspace */}
+              <button
+                onClick={() => switchWorkspace(null)}
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "10px 12px",
+                  background: !activeWorkspace
+                    ? "rgba(99,102,241,0.08)"
+                    : "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  transition: "background 0.1s",
+                  borderBottom: "1px solid rgba(255,255,255,0.06)",
+                }}
+                onMouseEnter={(e) => {
+                  if (activeWorkspace)
+                    (e.currentTarget as HTMLElement).style.background =
+                      "rgba(255,255,255,0.04)";
+                }}
+                onMouseLeave={(e) => {
+                  if (activeWorkspace)
+                    (e.currentTarget as HTMLElement).style.background =
+                      "transparent";
+                }}
+              >
+                <Avatar
+                  avatarUrl={developer?.avatarUrl ?? null}
+                  name={developer?.fullName ?? null}
+                  email={developer?.email ?? ""}
+                  size={22}
+                  fontSize={9}
+                />
+                <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+                  <p
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: "#ededed",
+                      margin: 0,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {developer?.fullName ??
+                      developer?.username ??
+                      "My Workspace"}
+                  </p>
+                  <p style={{ fontSize: 10, color: "#555", margin: 0 }}>
+                    owner
+                  </p>
+                </div>
+                {!activeWorkspace && (
+                  <svg
+                    width="11"
+                    height="11"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="#818cf8"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                  >
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                )}
+              </button>
+
+              {memberships.map((m) => {
+                const isActive = activeWorkspace?.ownerId === m.workspace.id;
+                const name =
+                  m.workspace.fullName ??
+                  m.workspace.username ??
+                  m.workspace.email.split("@")[0];
+                return (
+                  <button
+                    key={m.id}
+                    onClick={() =>
+                      switchWorkspace({
+                        ownerId: m.workspace.id,
+                        ownerName: name,
+                        ownerEmail: m.workspace.email,
+                        ownerAvatar: m.workspace.avatarUrl,
+                        role: m.role as "admin" | "member",
+                      })
+                    }
+                    style={{
+                      width: "100%",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "10px 12px",
+                      background: isActive
+                        ? "rgba(99,102,241,0.08)"
+                        : "transparent",
+                      border: "none",
+                      cursor: "pointer",
+                      transition: "background 0.1s",
+                      borderBottom: "1px solid rgba(255,255,255,0.06)",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isActive)
+                        (e.currentTarget as HTMLElement).style.background =
+                          "rgba(255,255,255,0.04)";
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isActive)
+                        (e.currentTarget as HTMLElement).style.background =
+                          "transparent";
+                    }}
+                  >
+                    <Avatar
+                      avatarUrl={m.workspace.avatarUrl}
+                      name={m.workspace.fullName}
+                      email={m.workspace.email}
+                      size={22}
+                      fontSize={9}
+                    />
+                    <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+                      <p
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 600,
+                          color: "#ededed",
+                          margin: 0,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {name}
+                      </p>
+                      <p
+                        style={{
+                          fontSize: 10,
+                          color: "#555",
+                          margin: 0,
+                          textTransform: "capitalize",
+                        }}
+                      >
+                        {m.role}
+                      </p>
+                    </div>
+                    {isActive && (
+                      <svg
+                        width="11"
+                        height="11"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="#818cf8"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                      >
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Role badge */}
+      {activeWorkspace && (
+        <div
+          style={{
+            margin: "6px 8px 0",
+            padding: "6px 10px",
+            borderRadius: 7,
+            background: "rgba(99,102,241,0.08)",
+            border: "1px solid rgba(99,102,241,0.15)",
+          }}
+        >
+          <p style={{ fontSize: 11, color: "#818cf8", margin: 0 }}>
+            Viewing as{" "}
+            <strong style={{ textTransform: "capitalize" }}>
+              {activeWorkspace.role}
+            </strong>
+            {activeWorkspace.role === "member" && " · read only"}
+          </p>
+        </div>
+      )}
 
       {/* Nav */}
       <nav style={{ flex: 1, overflowY: "auto", padding: "8px" }}>
@@ -183,7 +486,6 @@ export function AppShell() {
               background: "rgba(245,158,11,0.08)",
               textDecoration: "none",
               marginBottom: 6,
-              transition: "background 0.15s",
             }}
             onMouseEnter={(e) => {
               (e.currentTarget as HTMLElement).style.background =
@@ -210,7 +512,6 @@ export function AppShell() {
             Verify email
           </NavLink>
         )}
-
         <div
           style={{
             display: "flex",
@@ -221,14 +522,12 @@ export function AppShell() {
             background: "rgba(255,255,255,0.03)",
           }}
         >
-          {/* Avatar — image if set, initial circle otherwise */}
           <Avatar
             avatarUrl={developer?.avatarUrl}
             name={developer?.fullName}
             email={developer?.email}
             size={28}
           />
-
           <div style={{ flex: 1, minWidth: 0 }}>
             <p
               style={{
@@ -256,7 +555,6 @@ export function AppShell() {
               {developer?.email}
             </p>
           </div>
-
           <button
             onClick={handleLogout}
             title="Sign out"
@@ -306,7 +604,6 @@ export function AppShell() {
         overflow: "hidden",
       }}
     >
-      {/* ── Desktop sidebar ─────────────────────────────────── */}
       {isDesktop && (
         <aside
           style={{
@@ -321,8 +618,6 @@ export function AppShell() {
           {sidebarContent}
         </aside>
       )}
-
-      {/* ── Mobile backdrop ─────────────────────────────────── */}
       {!isDesktop && mobileOpen && (
         <div
           onClick={() => setMobileOpen(false)}
@@ -335,8 +630,6 @@ export function AppShell() {
           }}
         />
       )}
-
-      {/* ── Mobile drawer ───────────────────────────────────── */}
       {!isDesktop && (
         <aside
           ref={drawerRef}
@@ -358,8 +651,6 @@ export function AppShell() {
           {sidebarContent}
         </aside>
       )}
-
-      {/* ── Main content ────────────────────────────────────── */}
       <div
         style={{
           flex: 1,
@@ -368,7 +659,6 @@ export function AppShell() {
           overflow: "hidden",
         }}
       >
-        {/* Mobile topbar */}
         {!isDesktop && (
           <div
             style={{
@@ -421,10 +711,17 @@ export function AppShell() {
                 Quellix
               </span>
             </div>
+            <div style={{ marginLeft: "auto" }}>
+              <Avatar
+                avatarUrl={developer?.avatarUrl}
+                name={developer?.fullName}
+                email={developer?.email}
+                size={30}
+                fontSize={18}
+              />
+            </div>
           </div>
         )}
-
-        {/* Page content */}
         <main style={{ flex: 1, overflowY: "auto", background: "#080808" }}>
           <Outlet />
         </main>

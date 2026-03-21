@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useAuth } from "../../context/AuthContext";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { Modal } from "../../components/ui/Modal";
 import { Input } from "../../components/ui/Input";
@@ -7,6 +8,7 @@ import { projectService, type Project } from "../../api/project.api";
 import type { AxiosError } from "axios";
 
 export function Projects() {
+  const { workspaceOwnerId, canWrite, isOwner } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -31,12 +33,13 @@ export function Projects() {
   const [newProjectId, setNewProjectId] = useState<string | null>(null);
 
   useEffect(() => {
+    setLoading(true);
     projectService
-      .list()
+      .list(workspaceOwnerId ?? undefined)
       .then(({ data }) => setProjects(data.data.projects))
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [workspaceOwnerId]);
 
   // ── Create ─────────────────────────────────────────────────────────────────
 
@@ -45,7 +48,10 @@ export function Projects() {
     setCreateError("");
     setCreateLoading(true);
     try {
-      const { data } = await projectService.create({ name: createName.trim() });
+      const { data } = await projectService.create(
+        { name: createName.trim() },
+        workspaceOwnerId ?? undefined,
+      );
       setProjects((prev) => [data.data.project, ...prev]);
       setNewProjectId(data.data.project.id);
       setCreateOpen(false);
@@ -71,9 +77,13 @@ export function Projects() {
     setRenameError("");
     setRenameLoading(true);
     try {
-      const { data } = await projectService.update(renameProject.id, {
-        name: renameName.trim(),
-      });
+      const { data } = await projectService.update(
+        renameProject.id,
+        {
+          name: renameName.trim(),
+        },
+        workspaceOwnerId ?? undefined,
+      );
       setProjects((prev) =>
         prev.map((p) => (p.id === renameProject.id ? data.data.project : p)),
       );
@@ -93,7 +103,10 @@ export function Projects() {
     setDeleteError("");
     setDeleteLoading(true);
     try {
-      await projectService.delete(deleteProject.id);
+      await projectService.delete(
+        deleteProject.id,
+        workspaceOwnerId ?? undefined,
+      );
       setProjects((prev) => prev.filter((p) => p.id !== deleteProject.id));
       setDeleteProject(null);
     } catch (err) {
@@ -140,27 +153,29 @@ export function Projects() {
             Each project gets its own API keys and user base.
           </p>
         </div>
-        <button
-          onClick={() => {
-            setCreateError("");
-            setCreateOpen(true);
-          }}
-          className="btn-primary"
-        >
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            strokeLinecap="round"
+        {canWrite && (
+          <button
+            onClick={() => {
+              setCreateError("");
+              setCreateOpen(true);
+            }}
+            className="btn-primary"
           >
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-          New Project
-        </button>
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+            >
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            New Project
+          </button>
+        )}
       </div>
 
       {/* Table */}
@@ -199,12 +214,14 @@ export function Projects() {
             title="No projects"
             description="Create a project to generate API keys and start authenticating users in your app."
             action={
-              <button
-                onClick={() => setCreateOpen(true)}
-                className="btn-primary"
-              >
-                New Project
-              </button>
+              canWrite ? (
+                <button
+                  onClick={() => setCreateOpen(true)}
+                  className="btn-primary"
+                >
+                  New Project
+                </button>
+              ) : null
             }
           />
         ) : (
@@ -261,48 +278,52 @@ export function Projects() {
                             gap: 12,
                           }}
                         >
-                          <button
-                            onClick={() => openRename(p)}
-                            style={{
-                              fontSize: 12,
-                              color: "#555",
-                              background: "none",
-                              border: "none",
-                              cursor: "pointer",
-                              transition: "color 0.15s",
-                            }}
-                            onMouseEnter={(e) =>
-                              (e.currentTarget.style.color = "#ededed")
-                            }
-                            onMouseLeave={(e) =>
-                              (e.currentTarget.style.color = "#555")
-                            }
-                          >
-                            Rename
-                          </button>
-                          <button
-                            onClick={() => {
-                              setDeleteError("");
-                              setDeleteProject(p);
-                            }}
-                            style={{
-                              fontSize: 12,
-                              color: "rgba(248,113,113,0.7)",
-                              background: "none",
-                              border: "none",
-                              cursor: "pointer",
-                              transition: "color 0.15s",
-                            }}
-                            onMouseEnter={(e) =>
-                              (e.currentTarget.style.color = "#f87171")
-                            }
-                            onMouseLeave={(e) =>
-                              (e.currentTarget.style.color =
-                                "rgba(248,113,113,0.7)")
-                            }
-                          >
-                            Delete
-                          </button>
+                          {canWrite && (
+                            <button
+                              onClick={() => openRename(p)}
+                              style={{
+                                fontSize: 12,
+                                color: "#555",
+                                background: "none",
+                                border: "none",
+                                cursor: "pointer",
+                                transition: "color 0.15s",
+                              }}
+                              onMouseEnter={(e) =>
+                                (e.currentTarget.style.color = "#ededed")
+                              }
+                              onMouseLeave={(e) =>
+                                (e.currentTarget.style.color = "#555")
+                              }
+                            >
+                              Rename
+                            </button>
+                          )}
+                          {isOwner && (
+                            <button
+                              onClick={() => {
+                                setDeleteError("");
+                                setDeleteProject(p);
+                              }}
+                              style={{
+                                fontSize: 12,
+                                color: "rgba(248,113,113,0.7)",
+                                background: "none",
+                                border: "none",
+                                cursor: "pointer",
+                                transition: "color 0.15s",
+                              }}
+                              onMouseEnter={(e) =>
+                                (e.currentTarget.style.color = "#f87171")
+                              }
+                              onMouseLeave={(e) =>
+                                (e.currentTarget.style.color =
+                                  "rgba(248,113,113,0.7)")
+                              }
+                            >
+                              Delete
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -345,33 +366,37 @@ export function Projects() {
                       {p.name}
                     </span>
                     <div style={{ display: "flex", gap: 10 }}>
-                      <button
-                        onClick={() => openRename(p)}
-                        style={{
-                          fontSize: 12,
-                          color: "#555",
-                          background: "none",
-                          border: "none",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Rename
-                      </button>
-                      <button
-                        onClick={() => {
-                          setDeleteError("");
-                          setDeleteProject(p);
-                        }}
-                        style={{
-                          fontSize: 12,
-                          color: "rgba(248,113,113,0.7)",
-                          background: "none",
-                          border: "none",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Delete
-                      </button>
+                      {canWrite && (
+                        <button
+                          onClick={() => openRename(p)}
+                          style={{
+                            fontSize: 12,
+                            color: "#555",
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                          }}
+                        >
+                          Rename
+                        </button>
+                      )}
+                      {isOwner && (
+                        <button
+                          onClick={() => {
+                            setDeleteError("");
+                            setDeleteProject(p);
+                          }}
+                          style={{
+                            fontSize: 12,
+                            color: "rgba(248,113,113,0.7)",
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                          }}
+                        >
+                          Delete
+                        </button>
+                      )}
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>

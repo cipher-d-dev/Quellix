@@ -21,6 +21,19 @@ export interface TeamInvite {
   expiresAt: string;
 }
 
+export interface Membership {
+  id: string;
+  role: string;
+  joinedAt: string;
+  workspace: {
+    id: string;
+    fullName: string | null;
+    email: string;
+    username: string | null;
+    avatarUrl: string | null;
+  };
+}
+
 export interface InviteInfo {
   email: string;
   role: string;
@@ -60,12 +73,23 @@ interface OkRes {
 }
 
 export const teamService = {
-  listMembers: () => api.get<MembersRes>("/team/members"),
+  listMembers: (workspace?: string) =>
+    api.get<MembersRes>("/team/members", {
+      params: workspace ? { workspace } : undefined,
+    }),
 
-  listInvites: () => api.get<InvitesRes>("/team/invites"),
+  listInvites: (workspace?: string) =>
+    api.get<InvitesRes>("/team/invites", {
+      params: workspace ? { workspace } : undefined,
+    }),
 
   sendInvite: (data: { email: string; role: "member" | "admin" }) =>
     api.post<InviteRes>("/team/invites", data),
+
+  listMemberships: () =>
+    api.get<{ success: boolean; data: { memberships: Membership[] } }>(
+      "/team/memberships",
+    ),
 
   cancelInvite: (id: string) => api.delete<OkRes>(`/team/invites/${id}`),
 

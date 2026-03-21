@@ -2,7 +2,7 @@ interface AvatarProps {
   avatarUrl?: string | null;
   name?: string | null;
   email?: string | null;
-  size?: number;
+  size?: number | string;
   fontSize?: number;
 }
 
@@ -14,7 +14,7 @@ export function Avatar({
   fontSize,
 }: AvatarProps) {
   const letter = (name ?? email ?? "D").charAt(0).toUpperCase();
-  const fs = fontSize ?? Math.round(size * 0.4);
+  const fs = fontSize ?? Math.round(Number(size) * 0.4);
 
   if (avatarUrl) {
     return (

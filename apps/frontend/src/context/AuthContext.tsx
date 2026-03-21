@@ -7,7 +7,21 @@ import React, {
   useState,
 } from "react";
 import { authService, type Developer } from "../api/auth.api";
+import { teamService, type Membership } from "../api/team.api";
 import { setAccessToken, getAccessToken } from "../api/axiosInstance";
+
+// ---------------------------------------------------------------------------
+// Workspace — represents whichever workspace is currently active.
+// null = the developer's own workspace (role: "owner").
+// ---------------------------------------------------------------------------
+
+export interface ActiveWorkspace {
+  ownerId: string;
+  ownerName: string;
+  ownerEmail: string;
+  ownerAvatar: string | null;
+  role: "admin" | "member";
+}
 
 interface Ctx {
   developer: Developer | null;
@@ -15,6 +29,15 @@ interface Ctx {
   isLoading: boolean;
   setDeveloper: (d: Developer | null) => void;
   logout: () => Promise<void>;
+
+  // Workspace
+  memberships: Membership[]; // workspaces this developer belongs to
+  activeWorkspace: ActiveWorkspace | null; // null = own workspace
+  setActiveWorkspace: (w: ActiveWorkspace | null) => void;
+  workspaceOwnerId: string | null; // convenience: activeWorkspace?.ownerId ?? developer.id
+  workspaceRole: "owner" | "admin" | "member"; // role in the active workspace
+  canWrite: boolean; // owner or admin
+  isOwner: boolean; // true only when in own workspace
 }
 
 const AuthContext = createContext<Ctx | null>(null);
@@ -28,13 +51,18 @@ export function useAuth() {
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [developer, setDev] = useState<Developer | null>(null);
   const [isLoading, setLoading] = useState(true);
-
-  // Track whether auth state has already been set by a login/OAuth flow
-  // so the silent refresh on mount doesn't clobber it on failure.
+  const [memberships, setMemberships] = useState<Membership[]>([]);
+  const [activeWorkspace, setActiveWorkspace] =
+    useState<ActiveWorkspace | null>(null);
   const authSetByLogin = useRef(false);
 
-  // Silent refresh on mount — restores session from httpOnly refresh_token cookie.
+  // Silent refresh on mount
   useEffect(() => {
+    if (getAccessToken()) {
+      setLoading(false);
+      return;
+    }
+
     authService
       .refresh()
       .then(({ data }) => {
@@ -44,20 +72,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       })
       .catch(() => {
-        // Only clear auth state if nothing has already been set by an
-        // explicit login. If the user just signed in and navigate() brought
-        // us here before the refresh cookie round-trip completed, we must
-        // not wipe the token they just received.
-        if (!authSetByLogin.current && !getAccessToken()) {
-          setAccessToken(null);
-        }
+        setAccessToken(null);
       })
       .finally(() => setLoading(false));
   }, []);
 
+  // Load memberships whenever the developer changes
+  useEffect(() => {
+    if (!developer) {
+      setMemberships([]);
+      setActiveWorkspace(null);
+      return;
+    }
+    teamService
+      .listMemberships()
+      .then(({ data }) => setMemberships(data.data.memberships))
+      .catch(() => setMemberships([]));
+  }, [developer?.id]);
+
   const setDeveloper = useCallback((d: Developer | null) => {
-    // Mark that auth was set explicitly (login / OAuth) so the mount
-    // refresh failure path won't clear it.
     if (d !== null) authSetByLogin.current = true;
     setDev(d);
   }, []);
@@ -71,7 +104,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     authSetByLogin.current = false;
     setAccessToken(null);
     setDev(null);
+    setMemberships([]);
+    setActiveWorkspace(null);
   }, []);
+
+  // Derived workspace values
+  const workspaceOwnerId = activeWorkspace?.ownerId ?? developer?.id ?? null;
+  const workspaceRole: "owner" | "admin" | "member" = activeWorkspace
+    ? activeWorkspace.role
+    : "owner";
+  const canWrite = workspaceRole === "owner" || workspaceRole === "admin";
+  const isOwner = workspaceRole === "owner";
 
   return (
     <AuthContext.Provider
@@ -81,6 +124,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isLoading,
         setDeveloper,
         logout,
+        memberships,
+        activeWorkspace,
+        setActiveWorkspace,
+        workspaceOwnerId,
+        workspaceRole,
+        canWrite,
+        isOwner,
       }}
     >
       {children}

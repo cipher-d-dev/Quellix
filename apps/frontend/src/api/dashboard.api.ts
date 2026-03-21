@@ -6,7 +6,6 @@ export interface DashboardStats {
   endUsers: number;
   authEvents: number;
 }
-
 export interface RecentProject {
   id: string;
   name: string;
@@ -15,7 +14,6 @@ export interface RecentProject {
   keyCount: number;
   userCount: number;
 }
-
 export interface RecentEvent {
   id: string;
   type: string;
@@ -36,5 +34,8 @@ interface DashboardStatsRes {
 }
 
 export const dashboardService = {
-  getStats: () => api.get<DashboardStatsRes>("/dashboard/stats"),
+  getStats: (workspace?: string) =>
+    api.get<DashboardStatsRes>("/dashboard/stats", {
+      params: workspace ? { workspace } : undefined,
+    }),
 };

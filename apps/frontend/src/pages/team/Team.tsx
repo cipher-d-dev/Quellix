@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useAuth } from "../../context/AuthContext";
 import { Badge } from "../../components/ui/Badge";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { Modal } from "../../components/ui/Modal";
@@ -9,12 +10,15 @@ import {
   teamService,
   type TeamMember,
   type TeamInvite,
+  type Membership,
 } from "../../api/team.api";
 import type { AxiosError } from "axios";
 
 export function Team() {
+  const { workspaceOwnerId, isOwner } = useAuth();
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [invites, setInvites] = useState<TeamInvite[]>([]);
+  const [memberships, setMemberships] = useState<Membership[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Invite
@@ -30,16 +34,21 @@ export function Team() {
   const [removeLoading, setRemoveLoading] = useState(false);
 
   useEffect(() => {
-    Promise.all([teamService.listMembers(), teamService.listInvites()])
-      .then(([membersRes, invitesRes]) => {
+    Promise.all([
+      teamService.listMembers(workspaceOwnerId ?? undefined),
+      teamService.listInvites(workspaceOwnerId ?? undefined),
+      teamService.listMemberships(),
+    ])
+      .then(([membersRes, invitesRes, membershipsRes]) => {
         setMembers(membersRes.data.data.members);
         setInvites(invitesRes.data.data.invites);
+        setMemberships(membershipsRes.data.data.memberships);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);
 
-  // ── Invite ─────────────────────────────────────────────────────────────────
+  // ── Invite ────────────────────────────────────────────────────────────────
 
   function openInvite() {
     setInviteEmail("");
@@ -70,16 +79,12 @@ export function Team() {
     }
   }
 
-  // ── Cancel invite ──────────────────────────────────────────────────────────
-
   async function handleCancelInvite(id: string) {
     try {
       await teamService.cancelInvite(id);
       setInvites((prev) => prev.filter((i) => i.id !== id));
     } catch {}
   }
-
-  // ── Remove member ──────────────────────────────────────────────────────────
 
   async function handleRemoveMember() {
     if (!removeMember) return;
@@ -94,7 +99,8 @@ export function Team() {
     }
   }
 
-  const hasAnyData = members.length > 0 || invites.length > 0;
+  const hasAnyData =
+    members.length > 0 || invites.length > 0 || memberships.length > 0;
 
   return (
     <div
@@ -104,7 +110,7 @@ export function Team() {
         margin: "0 auto",
       }}
     >
-      {/* Header */}
+      {/* ── Header ── */}
       <div
         className="animate-fade-in"
         style={{
@@ -132,23 +138,26 @@ export function Team() {
             Manage organization members and their access levels.
           </p>
         </div>
-        <button onClick={openInvite} className="btn-primary">
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2.5"
-            strokeLinecap="round"
-          >
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-          Invite Member
-        </button>
+        {isOwner && (
+          <button onClick={openInvite} className="btn-primary">
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+            >
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            Invite Member
+          </button>
+        )}
       </div>
 
+      {/* ── Body ── */}
       {loading ? (
         <div style={{ padding: 40, display: "flex", justifyContent: "center" }}>
           <Spinner size={18} />
@@ -183,15 +192,17 @@ export function Team() {
             title="No team members"
             description="Invite colleagues to collaborate on your projects and manage authentication together."
             action={
-              <button onClick={openInvite} className="btn-primary">
-                Invite Member
-              </button>
+              isOwner ? (
+                <button onClick={openInvite} className="btn-primary">
+                  Invite Member
+                </button>
+              ) : null
             }
           />
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          {/* Members */}
+          {/* ── Members of my workspace ── */}
           {members.length > 0 && (
             <div className="animate-slide-up">
               <h2
@@ -265,26 +276,28 @@ export function Team() {
                           </td>
                           <td>{new Date(m.joinedAt).toLocaleDateString()}</td>
                           <td style={{ textAlign: "right" }}>
-                            <button
-                              onClick={() => setRemoveMember(m)}
-                              style={{
-                                fontSize: 12,
-                                color: "rgba(248,113,113,0.7)",
-                                background: "none",
-                                border: "none",
-                                cursor: "pointer",
-                                transition: "color 0.15s",
-                              }}
-                              onMouseEnter={(e) =>
-                                (e.currentTarget.style.color = "#f87171")
-                              }
-                              onMouseLeave={(e) =>
-                                (e.currentTarget.style.color =
-                                  "rgba(248,113,113,0.7)")
-                              }
-                            >
-                              Remove
-                            </button>
+                            {isOwner && (
+                              <button
+                                onClick={() => setRemoveMember(m)}
+                                style={{
+                                  fontSize: 12,
+                                  color: "rgba(248,113,113,0.7)",
+                                  background: "none",
+                                  border: "none",
+                                  cursor: "pointer",
+                                  transition: "color 0.15s",
+                                }}
+                                onMouseEnter={(e) =>
+                                  (e.currentTarget.style.color = "#f87171")
+                                }
+                                onMouseLeave={(e) =>
+                                  (e.currentTarget.style.color =
+                                    "rgba(248,113,113,0.7)")
+                                }
+                              >
+                                Remove
+                              </button>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -355,18 +368,20 @@ export function Team() {
                         <span style={{ fontSize: 12, color: "#555" }}>
                           Joined {new Date(m.joinedAt).toLocaleDateString()}
                         </span>
-                        <button
-                          onClick={() => setRemoveMember(m)}
-                          style={{
-                            fontSize: 12,
-                            color: "rgba(248,113,113,0.7)",
-                            background: "none",
-                            border: "none",
-                            cursor: "pointer",
-                          }}
-                        >
-                          Remove
-                        </button>
+                        {isOwner && (
+                          <button
+                            onClick={() => setRemoveMember(m)}
+                            style={{
+                              fontSize: 12,
+                              color: "rgba(248,113,113,0.7)",
+                              background: "none",
+                              border: "none",
+                              cursor: "pointer",
+                            }}
+                          >
+                            Remove
+                          </button>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -375,7 +390,7 @@ export function Team() {
             </div>
           )}
 
-          {/* Pending Invites */}
+          {/* ── Pending Invites ── */}
           {invites.length > 0 && (
             <div className="animate-slide-up">
               <h2
@@ -455,25 +470,117 @@ export function Team() {
                       >
                         Pending
                       </span>
-                      <button
-                        onClick={() => handleCancelInvite(inv.id)}
+                      {isOwner && (
+                        <button
+                          onClick={() => handleCancelInvite(inv.id)}
+                          style={{
+                            fontSize: 12,
+                            color: "#555",
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            transition: "color 0.15s",
+                          }}
+                          onMouseEnter={(e) =>
+                            (e.currentTarget.style.color = "#f87171")
+                          }
+                          onMouseLeave={(e) =>
+                            (e.currentTarget.style.color = "#555")
+                          }
+                        >
+                          Cancel
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* ── Teams I belong to ── */}
+          {memberships.length > 0 && (
+            <div className="animate-slide-up">
+              <h2
+                style={{
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: "#555",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.08em",
+                  margin: "0 0 10px",
+                }}
+              >
+                Member Of · {memberships.length}
+              </h2>
+              <div
+                style={{
+                  borderRadius: 12,
+                  background: "#111",
+                  border: "1px solid rgba(255,255,255,0.07)",
+                  overflow: "hidden",
+                }}
+              >
+                {memberships.map((m, i) => (
+                  <div
+                    key={m.id}
+                    style={{
+                      padding: "14px 20px",
+                      borderBottom:
+                        i < memberships.length - 1
+                          ? "1px solid rgba(255,255,255,0.05)"
+                          : "none",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                    }}
+                  >
+                    <Avatar
+                      avatarUrl={m.workspace.avatarUrl}
+                      name={m.workspace.fullName}
+                      email={m.workspace.email}
+                      size={36}
+                      fontSize={14}
+                    />
+                    <div style={{ flex: 1 }}>
+                      <p
                         style={{
-                          fontSize: 12,
-                          color: "#555",
-                          background: "none",
-                          border: "none",
-                          cursor: "pointer",
-                          transition: "color 0.15s",
+                          fontSize: 13,
+                          fontWeight: 500,
+                          color: "#ededed",
+                          margin: 0,
                         }}
-                        onMouseEnter={(e) =>
-                          (e.currentTarget.style.color = "#f87171")
-                        }
-                        onMouseLeave={(e) =>
-                          (e.currentTarget.style.color = "#555")
-                        }
                       >
-                        Cancel
-                      </button>
+                        {m.workspace.fullName ??
+                          m.workspace.username ??
+                          m.workspace.email.split("@")[0]}
+                      </p>
+                      <p
+                        style={{
+                          fontSize: 11,
+                          color: "#555",
+                          margin: "2px 0 0",
+                        }}
+                      >
+                        {m.workspace.email}
+                      </p>
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Badge
+                        variant={m.role === "admin" ? "indigo" : "default"}
+                      >
+                        {m.role}
+                      </Badge>
+                      <span style={{ fontSize: 11, color: "#555" }}>
+                        Joined {new Date(m.joinedAt).toLocaleDateString()}
+                      </span>
                     </div>
                   </div>
                 ))}
@@ -483,7 +590,7 @@ export function Team() {
         </div>
       )}
 
-      {/* Invite Modal */}
+      {/* ── Invite Modal ── */}
       <Modal
         open={inviteOpen}
         onClose={() => setInviteOpen(false)}
@@ -588,7 +695,7 @@ export function Team() {
         </div>
       </Modal>
 
-      {/* Remove Member Confirm */}
+      {/* ── Remove Member Confirm ── */}
       <Modal
         open={!!removeMember}
         onClose={() => setRemoveMember(null)}

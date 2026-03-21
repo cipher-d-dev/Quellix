@@ -49,7 +49,7 @@ function timeAgo(dateStr: string) {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function Dashboard() {
-  const { developer } = useAuth();
+  const { developer, workspaceOwnerId, canWrite } = useAuth();
   const navigate = useNavigate();
 
   const [stats, setStats] = useState<DashboardStats>({
@@ -63,8 +63,9 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    setLoading(true);
     dashboardService
-      .getStats()
+      .getStats(workspaceOwnerId ?? undefined)
       .then(({ data }) => {
         setStats(data.data.stats);
         setRecentProjects(data.data.recentProjects);
@@ -72,7 +73,7 @@ export function Dashboard() {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [workspaceOwnerId]);
 
   const first =
     developer?.fullName?.split(" ")[0] ?? developer?.username ?? "there";
@@ -131,25 +132,27 @@ export function Dashboard() {
               </p>
             </div>
           </div>
-          <button
-            onClick={() => navigate("/projects")}
-            className="btn-primary"
-            style={{ flexShrink: 0 }}
-          >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
+          {canWrite && (
+            <button
+              onClick={() => navigate("/projects")}
+              className="btn-primary"
+              style={{ flexShrink: 0 }}
             >
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-            New Project
-          </button>
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+              >
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              New Project
+            </button>
+          )}
         </div>
       </div>
 
