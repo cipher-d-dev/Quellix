@@ -49,7 +49,7 @@ function timeAgo(dateStr: string) {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function Dashboard() {
-  const { developer, workspaceOwnerId, canWrite } = useAuth();
+  const { developer, workspaceOwnerId, canWrite, activeWorkspace, workspaceRole } = useAuth();
   const navigate = useNavigate();
 
   const [stats, setStats] = useState<DashboardStats>({
@@ -81,6 +81,9 @@ export function Dashboard() {
   const greeting =
     hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
 
+  const isOwnWorkspace = !activeWorkspace;
+  const workspaceName = activeWorkspace?.ownerName ?? "your workspace";
+
   const STATS = [
     { label: "Projects", value: stats.projects },
     { label: "API Keys", value: stats.apiKeys },
@@ -96,6 +99,48 @@ export function Dashboard() {
         margin: "0 auto",
       }}
     >
+      {/* ── Workspace banner — only when viewing another workspace ── */}
+      {!isOwnWorkspace && (
+        <div
+          className="animate-fade-in"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            padding: "10px 16px",
+            borderRadius: 10,
+            marginBottom: 20,
+            background: "rgba(99,102,241,0.07)",
+            border: "1px solid rgba(99,102,241,0.2)",
+          }}
+        >
+          <Avatar
+            avatarUrl={activeWorkspace?.ownerAvatar ?? null}
+            name={activeWorkspace?.ownerName ?? null}
+            email={activeWorkspace?.ownerEmail ?? ""}
+            size={28}
+            fontSize={11}
+          />
+          <div style={{ flex: 1 }}>
+            <p style={{ fontSize: 12, fontWeight: 600, color: "#818cf8", margin: 0 }}>
+              Viewing {workspaceName}&apos;s workspace
+            </p>
+            <p style={{ fontSize: 11, color: "#555", margin: "1px 0 0" }}>
+              {workspaceRole === "admin"
+                ? "You have admin access — you can create and manage resources."
+                : "You have read-only access — contact the owner to make changes."}
+            </p>
+          </div>
+          <span style={{
+            fontSize: 11, padding: "2px 10px", borderRadius: 99,
+            background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.25)",
+            color: "#818cf8", textTransform: "capitalize", flexShrink: 0,
+          }}>
+            {workspaceRole}
+          </span>
+        </div>
+      )}
+
       {/* ── Header ── */}
       <div className="animate-fade-in" style={{ marginBottom: 32 }}>
         <div
@@ -109,9 +154,9 @@ export function Dashboard() {
         >
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <Avatar
-              avatarUrl={developer?.avatarUrl}
-              name={developer?.fullName}
-              email={developer?.email}
+              avatarUrl={isOwnWorkspace ? developer?.avatarUrl : (activeWorkspace?.ownerAvatar ?? null)}
+              name={isOwnWorkspace ? developer?.fullName : (activeWorkspace?.ownerName ?? null)}
+              email={isOwnWorkspace ? developer?.email : (activeWorkspace?.ownerEmail ?? "")}
               size={44}
               fontSize={18}
             />
@@ -125,10 +170,12 @@ export function Dashboard() {
                   margin: 0,
                 }}
               >
-                {greeting}, {first} 👋
+                {isOwnWorkspace ? `${greeting}, ${first} 👋` : `${workspaceName}'s workspace`}
               </h1>
               <p style={{ fontSize: 13, color: "#555", marginTop: 2 }}>
-                Here's what's happening across your projects.
+                {isOwnWorkspace
+                  ? "Here's what's happening across your projects."
+                  : `Viewing as ${workspaceRole} · ${activeWorkspace?.ownerEmail}`}
               </p>
             </div>
           </div>

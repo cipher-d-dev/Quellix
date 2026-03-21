@@ -1,8 +1,12 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { NavLink, useNavigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth, type ActiveWorkspace } from "../../context/AuthContext";
 import { Avatar } from "../ui/Avatar";
 import LOGO from "../../assets/favicon.ico";
+import {
+  notificationService,
+  type Notification,
+} from "../../api/notification.api";
 
 const NAV = [
   { label: "Overview", path: "/dashboard", end: true, icon: <GridIcon /> },
@@ -27,13 +31,18 @@ export function AppShell() {
   const location = useLocation();
   const drawerRef = useRef<HTMLDivElement>(null);
   const switcherRef = useRef<HTMLDivElement>(null);
+  const notifRef = useRef<HTMLDivElement>(null);
 
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(
     () => window.innerWidth >= BREAKPOINT,
   );
   const [workspaceSwitcherOpen, setWorkspaceSwitcherOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
 
+  // ── Viewport ──────────────────────────────────────────────────────────────
   useEffect(() => {
     const fn = () => {
       const desktop = window.innerWidth >= BREAKPOINT;
@@ -55,18 +64,58 @@ export function AppShell() {
     };
   }, [mobileOpen, isDesktop]);
 
+  // ── Outside click — workspace switcher ────────────────────────────────────
   useEffect(() => {
-    function handleClick(e: MouseEvent) {
+    function h(e: MouseEvent) {
       if (
         switcherRef.current &&
         !switcherRef.current.contains(e.target as Node)
-      ) {
+      )
         setWorkspaceSwitcherOpen(false);
-      }
     }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
   }, []);
+
+  // ── Outside click — notification panel ───────────────────────────────────
+  useEffect(() => {
+    function h(e: MouseEvent) {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node))
+        setNotifOpen(false);
+    }
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+
+  // ── Notifications polling ─────────────────────────────────────────────────
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const { data } = await notificationService.list();
+      setNotifications(data.data.notifications);
+      setUnreadCount(data.data.unreadCount);
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    fetchNotifications();
+    const iv = setInterval(fetchNotifications, 30_000);
+    return () => clearInterval(iv);
+  }, [fetchNotifications]);
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
+  async function handleMarkAllRead() {
+    await notificationService.markAllRead();
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    setUnreadCount(0);
+  }
+
+  async function handleMarkOneRead(id: string) {
+    await notificationService.markRead(id);
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
+    );
+    setUnreadCount((prev) => Math.max(0, prev - 1));
+  }
 
   async function handleLogout() {
     await logout();
@@ -79,6 +128,30 @@ export function AppShell() {
     navigate("/dashboard");
   }
 
+  function notifIcon(type: Notification["type"]) {
+    switch (type) {
+      case "TEAM_INVITE":
+        return "👥";
+      case "TEAM_ACCEPTED":
+        return "✅";
+      case "ANNOUNCEMENT":
+        return "📣";
+      case "SYSTEM":
+        return "⚙️";
+    }
+  }
+
+  function timeAgo(dateStr: string) {
+    const diff = Date.now() - new Date(dateStr).getTime();
+    const m = Math.floor(diff / 60000);
+    if (m < 1) return "just now";
+    if (m < 60) return `${m}m ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h}h ago`;
+    return new Date(dateStr).toLocaleDateString();
+  }
+
+  // Current workspace display
   const currentName = activeWorkspace
     ? activeWorkspace.ownerName
     : (developer?.fullName ?? developer?.username ?? "My Workspace");
@@ -89,6 +162,167 @@ export function AppShell() {
     ? activeWorkspace.ownerEmail
     : (developer?.email ?? "");
 
+  // ── Notification panel (shared between desktop + mobile) ──────────────────
+  const notifPanel = (
+    <div
+      style={{
+        position: "absolute",
+        bottom: "calc(100% + 6px)",
+        left: 8,
+        right: 8,
+        background: "#111",
+        border: "1px solid rgba(255,255,255,0.1)",
+        borderRadius: 12,
+        overflow: "hidden",
+        zIndex: 200,
+        boxShadow: "0 -8px 32px rgba(0,0,0,0.5)",
+        maxHeight: 380,
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "12px 14px",
+          borderBottom: "1px solid rgba(255,255,255,0.07)",
+          flexShrink: 0,
+        }}
+      >
+        <span style={{ fontSize: 12, fontWeight: 600, color: "#ededed" }}>
+          Notifications
+        </span>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          {unreadCount > 0 && (
+            <button
+              onClick={handleMarkAllRead}
+              style={{
+                fontSize: 11,
+                color: "#818cf8",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                padding: 0,
+              }}
+            >
+              Mark all read
+            </button>
+          )}
+          <button
+            onClick={() => {
+              setNotifOpen(false);
+              navigate("/notifications");
+            }}
+            style={{
+              fontSize: 11,
+              color: "#555",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: 0,
+            }}
+          >
+            View all →
+          </button>
+        </div>
+      </div>
+      <div style={{ overflowY: "auto", flex: 1 }}>
+        {notifications.length === 0 ? (
+          <div style={{ padding: "28px 16px", textAlign: "center" }}>
+            <p style={{ fontSize: 12, color: "#555", margin: 0 }}>
+              No notifications yet
+            </p>
+          </div>
+        ) : (
+          notifications.map((n, i) => (
+            <div
+              key={n.id}
+              onClick={() => !n.read && handleMarkOneRead(n.id)}
+              style={{
+                padding: "12px 14px",
+                borderBottom:
+                  i < notifications.length - 1
+                    ? "1px solid rgba(255,255,255,0.05)"
+                    : "none",
+                background: n.read ? "transparent" : "rgba(99,102,241,0.05)",
+                cursor: n.read ? "default" : "pointer",
+                display: "flex",
+                gap: 10,
+                alignItems: "flex-start",
+                transition: "background 0.15s",
+              }}
+              onMouseEnter={(e) => {
+                if (!n.read)
+                  (e.currentTarget as HTMLElement).style.background =
+                    "rgba(99,102,241,0.1)";
+              }}
+              onMouseLeave={(e) => {
+                if (!n.read)
+                  (e.currentTarget as HTMLElement).style.background =
+                    "rgba(99,102,241,0.05)";
+              }}
+            >
+              <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>
+                {notifIcon(n.type)}
+              </span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                    marginBottom: 2,
+                  }}
+                >
+                  <p
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: n.read ? "#888" : "#ededed",
+                      margin: 0,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {n.title}
+                  </p>
+                  {!n.read && (
+                    <span
+                      style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: "50%",
+                        background: "#6366f1",
+                        flexShrink: 0,
+                      }}
+                    />
+                  )}
+                </div>
+                <p
+                  style={{
+                    fontSize: 11,
+                    color: "#555",
+                    margin: 0,
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {n.body}
+                </p>
+                <p style={{ fontSize: 10, color: "#444", margin: "4px 0 0" }}>
+                  {timeAgo(n.createdAt)}
+                </p>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+
+  // ── Sidebar content ───────────────────────────────────────────────────────
   const sidebarContent = (
     <>
       {/* Brand */}
@@ -248,7 +482,6 @@ export function AppShell() {
                     : "transparent",
                   border: "none",
                   cursor: "pointer",
-                  transition: "background 0.1s",
                   borderBottom: "1px solid rgba(255,255,255,0.06)",
                 }}
                 onMouseEnter={(e) => {
@@ -333,7 +566,6 @@ export function AppShell() {
                         : "transparent",
                       border: "none",
                       cursor: "pointer",
-                      transition: "background 0.1s",
                       borderBottom: "1px solid rgba(255,255,255,0.06)",
                     }}
                     onMouseEnter={(e) => {
@@ -463,6 +695,91 @@ export function AppShell() {
           ))}
         </div>
       </nav>
+
+      {/* Notifications button + dropdown */}
+      <div
+        style={{ padding: "4px 8px 0", position: "relative" }}
+        ref={notifRef}
+      >
+        <button
+          onClick={() => setNotifOpen((v) => !v)}
+          style={{
+            width: "100%",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            padding: "7px 10px",
+            borderRadius: 8,
+            background: notifOpen ? "rgba(255,255,255,0.05)" : "transparent",
+            border: "none",
+            cursor: "pointer",
+            transition: "background 0.15s",
+            color: "#666",
+            fontSize: 12,
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLElement).style.background =
+              "rgba(255,255,255,0.04)";
+          }}
+          onMouseLeave={(e) => {
+            if (!notifOpen)
+              (e.currentTarget as HTMLElement).style.background = "transparent";
+          }}
+        >
+          <div style={{ position: "relative", flexShrink: 0 }}>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            >
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+              <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+            </svg>
+            {unreadCount > 0 && (
+              <span
+                style={{
+                  position: "absolute",
+                  top: -4,
+                  right: -4,
+                  minWidth: 14,
+                  height: 14,
+                  borderRadius: 99,
+                  background: "#6366f1",
+                  color: "#fff",
+                  fontSize: 9,
+                  fontWeight: 700,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: "0 3px",
+                }}
+              >
+                {unreadCount > 99 ? "99+" : unreadCount}
+              </span>
+            )}
+          </div>
+          <span>Notifications</span>
+          {unreadCount > 0 && (
+            <span
+              style={{
+                marginLeft: "auto",
+                fontSize: 10,
+                padding: "1px 6px",
+                borderRadius: 99,
+                background: "rgba(99,102,241,0.15)",
+                color: "#818cf8",
+              }}
+            >
+              {unreadCount} new
+            </span>
+          )}
+        </button>
+        {notifOpen && notifPanel}
+      </div>
 
       {/* User footer */}
       <div
@@ -618,6 +935,7 @@ export function AppShell() {
           {sidebarContent}
         </aside>
       )}
+
       {!isDesktop && mobileOpen && (
         <div
           onClick={() => setMobileOpen(false)}
@@ -630,6 +948,7 @@ export function AppShell() {
           }}
         />
       )}
+
       {!isDesktop && (
         <aside
           ref={drawerRef}
@@ -651,6 +970,7 @@ export function AppShell() {
           {sidebarContent}
         </aside>
       )}
+
       <div
         style={{
           flex: 1,
@@ -659,6 +979,7 @@ export function AppShell() {
           overflow: "hidden",
         }}
       >
+        {/* Mobile topbar */}
         {!isDesktop && (
           <div
             style={{
@@ -711,7 +1032,213 @@ export function AppShell() {
                 Quellix
               </span>
             </div>
-            <div style={{ marginLeft: "auto" }}>
+            {/* Mobile bell with its own dropdown anchor */}
+            <div
+              style={{
+                marginLeft: "auto",
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                position: "relative",
+              }}
+              ref={notifRef}
+            >
+              <button
+                onClick={() => setNotifOpen((v) => !v)}
+                style={{
+                  position: "relative",
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  color: "#888",
+                  display: "flex",
+                  padding: 4,
+                }}
+              >
+                <svg
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                >
+                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                </svg>
+                {unreadCount > 0 && (
+                  <span
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      right: 0,
+                      minWidth: 14,
+                      height: 14,
+                      borderRadius: 99,
+                      background: "#6366f1",
+                      color: "#fff",
+                      fontSize: 9,
+                      fontWeight: 700,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: "0 3px",
+                    }}
+                  >
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
+              </button>
+              {notifOpen && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "calc(100% + 8px)",
+                    right: 0,
+                    width: 300,
+                    background: "#111",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    borderRadius: 12,
+                    overflow: "hidden",
+                    zIndex: 200,
+                    boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+                    maxHeight: 380,
+                    display: "flex",
+                    flexDirection: "column",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "12px 14px",
+                      borderBottom: "1px solid rgba(255,255,255,0.07)",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: "#ededed",
+                      }}
+                    >
+                      Notifications
+                    </span>
+                    <div style={{ display: "flex", gap: 10 }}>
+                      {unreadCount > 0 && (
+                        <button
+                          onClick={handleMarkAllRead}
+                          style={{
+                            fontSize: 11,
+                            color: "#818cf8",
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            padding: 0,
+                          }}
+                        >
+                          Mark all read
+                        </button>
+                      )}
+                      <button
+                        onClick={() => {
+                          setNotifOpen(false);
+                          navigate("/notifications");
+                        }}
+                        style={{
+                          fontSize: 11,
+                          color: "#555",
+                          background: "none",
+                          border: "none",
+                          cursor: "pointer",
+                          padding: 0,
+                        }}
+                      >
+                        View all →
+                      </button>
+                    </div>
+                  </div>
+                  <div style={{ overflowY: "auto", flex: 1 }}>
+                    {notifications.length === 0 ? (
+                      <div
+                        style={{ padding: "28px 16px", textAlign: "center" }}
+                      >
+                        <p style={{ fontSize: 12, color: "#555", margin: 0 }}>
+                          No notifications yet
+                        </p>
+                      </div>
+                    ) : (
+                      notifications.map((n, i) => (
+                        <div
+                          key={n.id}
+                          onClick={() => !n.read && handleMarkOneRead(n.id)}
+                          style={{
+                            padding: "12px 14px",
+                            borderBottom:
+                              i < notifications.length - 1
+                                ? "1px solid rgba(255,255,255,0.05)"
+                                : "none",
+                            background: n.read
+                              ? "transparent"
+                              : "rgba(99,102,241,0.05)",
+                            cursor: n.read ? "default" : "pointer",
+                            display: "flex",
+                            gap: 10,
+                            alignItems: "flex-start",
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontSize: 16,
+                              flexShrink: 0,
+                              marginTop: 1,
+                            }}
+                          >
+                            {notifIcon(n.type)}
+                          </span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <p
+                              style={{
+                                fontSize: 12,
+                                fontWeight: 600,
+                                color: n.read ? "#888" : "#ededed",
+                                margin: "0 0 2px",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {n.title}
+                            </p>
+                            <p
+                              style={{
+                                fontSize: 11,
+                                color: "#555",
+                                margin: 0,
+                                lineHeight: 1.5,
+                              }}
+                            >
+                              {n.body}
+                            </p>
+                            <p
+                              style={{
+                                fontSize: 10,
+                                color: "#444",
+                                margin: "4px 0 0",
+                              }}
+                            >
+                              {timeAgo(n.createdAt)}
+                            </p>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
               <Avatar
                 avatarUrl={developer?.avatarUrl}
                 name={developer?.fullName}
@@ -722,6 +1249,7 @@ export function AppShell() {
             </div>
           </div>
         )}
+
         <main style={{ flex: 1, overflowY: "auto", background: "#080808" }}>
           <Outlet />
         </main>

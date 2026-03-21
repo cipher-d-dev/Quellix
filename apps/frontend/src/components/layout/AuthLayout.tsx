@@ -58,7 +58,7 @@ export function AuthLayout({
 
       {/* Card */}
       <div
-        className="w-full max-w-[380px] relative z-10 animate-slide-up rounded-xl overflow-hidden"
+        className="w-full max-w-95 relative z-10 animate-slide-up rounded-xl overflow-hidden"
         style={{
           background: "#111",
           border: "1px solid rgba(255,255,255,0.09)",

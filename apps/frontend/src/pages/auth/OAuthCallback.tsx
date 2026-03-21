@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { setAccessToken } from "../../api/axiosInstance";
 import { authService } from "../../api/auth.api";
 import { useAuth } from "../../context/AuthContext";
@@ -18,7 +18,6 @@ const OAUTH_ERRORS: Record<string, string> = {
 export function OAuthCallback() {
   const navigate = useNavigate();
   const { setDeveloper } = useAuth();
-  const [searchParams] = useSearchParams();
   const [error, setError] = useState("");
 
   useEffect(() => {

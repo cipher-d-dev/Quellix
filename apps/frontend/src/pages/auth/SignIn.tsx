@@ -116,7 +116,7 @@ export function SignIn() {
             }}
             autoCapitalize="none"
             autoComplete="username"
-            className="w-full px-3 py-[7px] text-sm rounded-md outline-none transition-all duration-100 placeholder:text-[#333] border border-white/[0.1] focus:border-indigo-500/60 focus:ring-2 focus:ring-indigo-500/[0.08]"
+            className="w-full px-3 py-1.75 text-sm rounded-md outline-none transition-all duration-100 placeholder:text-[#333] border border-white/10 focus:border-indigo-500/60 focus:ring-2 focus:ring-indigo-500/8"
             style={{ background: "#0f0f0f", color: "#ededed" }}
           />
         </div>
@@ -165,7 +165,7 @@ export function SignIn() {
                 setError("");
               }}
               autoComplete="current-password"
-              className="w-full px-3 py-[7px] pr-10 text-sm rounded-md outline-none transition-all duration-100 placeholder:text-[#333] border border-white/[0.1] focus:border-indigo-500/60 focus:ring-2 focus:ring-indigo-500/[0.08]"
+              className="w-full px-3 py-1.75 pr-10 text-sm rounded-md outline-none transition-all duration-100 placeholder:text-[#333] border border-white/10 focus:border-indigo-500/60 focus:ring-2 focus:ring-indigo-500/8"
               style={{ background: "#0f0f0f", color: "#ededed" }}
             />
             <button
@@ -234,7 +234,7 @@ export function SignIn() {
         type="button"
         disabled={githubLoading}
         onClick={handleGithubSignIn}
-        className="flex items-center justify-center gap-2.5 w-full px-4 py-[7px] text-sm font-medium rounded-md transition-all duration-100 select-none"
+        className="flex items-center justify-center gap-2.5 w-full px-4 py-1.75 text-sm font-medium rounded-md transition-all duration-100 select-none"
         style={{
           background: "#161616",
           border: "1px solid rgba(255,255,255,0.1)",
