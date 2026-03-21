@@ -1,6 +1,10 @@
 import express from "express";
 import { requireAuth } from "../middlewares/authMiddleware.ts";
 import {
+  resolveWorkspace,
+  requireWriteAccess,
+} from "../middlewares/resolveWorkspace.ts";
+import {
   listApiKeys,
   createApiKey,
   revokeApiKey,
@@ -12,8 +16,17 @@ const router = express.Router();
 
 router.use(requireAuth);
 
-router.get("/", listApiKeys);
-router.post("/", validateBody(createApiKeySchema), createApiKey);
-router.delete("/:id", revokeApiKey);
+// Any role can read
+router.get("/", resolveWorkspace, listApiKeys);
+
+// Admin + owner can create and revoke
+router.post(
+  "/",
+  resolveWorkspace,
+  requireWriteAccess,
+  validateBody(createApiKeySchema),
+  createApiKey,
+);
+router.delete("/:id", resolveWorkspace, requireWriteAccess, revokeApiKey);
 
 export default router;

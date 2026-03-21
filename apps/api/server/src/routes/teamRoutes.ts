@@ -1,7 +1,12 @@
 import express from "express";
 import { requireAuth } from "../middlewares/authMiddleware.ts";
 import {
+  resolveWorkspace,
+  requireOwner,
+} from "../middlewares/resolveWorkspace.ts";
+import {
   listMembers,
+  listMemberships,
   listInvites,
   sendInvite,
   cancelInvite,
@@ -17,17 +22,28 @@ import {
 
 const router = express.Router();
 
-// Public — no auth required to inspect invite info (just shows sender, role)
+// Public
 router.get("/invites/info", getInviteInfo);
 
-// All routes below require a valid access token
 router.use(requireAuth);
 
-router.get("/members", listMembers);
-router.get("/invites", listInvites);
-router.post("/invites", validateBody(sendInviteSchema), sendInvite);
+// Read — any role (resolveWorkspace so members can view the team page)
+router.get("/members", resolveWorkspace, listMembers);
+router.get("/invites", resolveWorkspace, listInvites);
+
+// These are always scoped to the caller's own workspace — no resolveWorkspace needed
+router.get("/memberships", listMemberships);
 router.post("/invites/accept", validateBody(acceptInviteSchema), acceptInvite);
-router.delete("/invites/:id", cancelInvite);
-router.delete("/members/:id", removeMember);
+
+// Owner only — team management
+router.post(
+  "/invites",
+  resolveWorkspace,
+  requireOwner,
+  validateBody(sendInviteSchema),
+  sendInvite,
+);
+router.delete("/invites/:id", resolveWorkspace, requireOwner, cancelInvite);
+router.delete("/members/:id", resolveWorkspace, requireOwner, removeMember);
 
 export default router;

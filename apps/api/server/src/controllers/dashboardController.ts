@@ -2,16 +2,11 @@ import type { Response } from "express";
 import { prisma } from "../config/db.ts";
 import type { DeveloperRequest } from "../constants/types.ts";
 
-// ---------------------------------------------------------------------------
-// GET /api/dashboard/stats
-// Returns high-level counts scoped to the authenticated developer's workspace.
-// ---------------------------------------------------------------------------
-
+// GET /api/dashboard/stats — any role
 export async function getDashboardStats(req: DeveloperRequest, res: Response) {
   try {
-    const developerId = req.developer!.id;
+    const ownerId = req.workspaceOwnerId!;
 
-    // Fetch everything in a single round-trip with Promise.all
     const [
       projectCount,
       apiKeyCount,
@@ -19,39 +14,38 @@ export async function getDashboardStats(req: DeveloperRequest, res: Response) {
       authEventCount,
       recentProjects,
     ] = await Promise.all([
-      // Total projects owned by this developer
-      prisma.project.count({ where: { developerId } }),
-
-      // Active (non-revoked) API keys across all developer's projects
+      prisma.project.count({ where: { developerId: ownerId } }),
       prisma.apiKey.count({
-        where: { revokedAt: null, project: { developerId } },
+        where: { revokedAt: null, project: { developerId: ownerId } },
       }),
-
-      // Total end users across all developer's projects
-      prisma.endUser.count({ where: { project: { developerId } } }),
-
-      // Auth events for the developer's projects
-      prisma.authEvent.count({ where: { project: { developerId } } }),
-
-      // Last 5 projects for the "Recent Projects" panel
+      prisma.endUser.count({ where: { project: { developerId: ownerId } } }),
+      prisma.authEvent.count({ where: { project: { developerId: ownerId } } }),
       prisma.project.findMany({
-        where: { developerId },
-        include: {
-          _count: {
-            select: {
-              apiKeys: { where: { revokedAt: null } },
-              endUsers: true,
-            },
-          },
-        },
+        where: { developerId: ownerId },
         orderBy: { createdAt: "desc" },
         take: 5,
       }),
     ]);
 
-    // Last 10 auth events for the "Auth Events" live panel
+    const recentProjectsWithCounts = await Promise.all(
+      recentProjects.map(async (p) => {
+        const [keyCount, userCount] = await Promise.all([
+          prisma.apiKey.count({ where: { projectId: p.id, revokedAt: null } }),
+          prisma.endUser.count({ where: { projectId: p.id } }),
+        ]);
+        return {
+          id: p.id,
+          name: p.name,
+          slug: p.slug,
+          createdAt: p.createdAt,
+          keyCount,
+          userCount,
+        };
+      }),
+    );
+
     const recentEvents = await prisma.authEvent.findMany({
-      where: { project: { developerId } },
+      where: { project: { developerId: ownerId } },
       orderBy: { createdAt: "desc" },
       take: 10,
       select: {
@@ -74,14 +68,7 @@ export async function getDashboardStats(req: DeveloperRequest, res: Response) {
           endUsers: endUserCount,
           authEvents: authEventCount,
         },
-        recentProjects: recentProjects.map((p) => ({
-          id: p.id,
-          name: p.name,
-          slug: p.slug,
-          createdAt: p.createdAt,
-          keyCount: p._count.apiKeys,
-          userCount: p._count.endUsers,
-        })),
+        recentProjects: recentProjectsWithCounts,
         recentEvents: recentEvents.map((e) => ({
           id: e.id,
           type: e.type,

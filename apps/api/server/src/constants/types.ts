@@ -13,6 +13,9 @@ interface DeveloperRequest extends Request {
     emailVerified: boolean;
     authProvider: string;
   };
+  // Set by resolveWorkspace middleware
+  workspaceOwnerId?: string;
+  workspaceRole?: "owner" | "admin" | "member";
 }
 
 export { zodType, DeveloperRequest };

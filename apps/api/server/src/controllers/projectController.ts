@@ -2,10 +2,6 @@ import type { Response } from "express";
 import { prisma } from "../config/db.ts";
 import type { DeveloperRequest } from "../constants/types.ts";
 
-// ---------------------------------------------------------------------------
-// Slug helpers
-// ---------------------------------------------------------------------------
-
 function slugify(name: string): string {
   return name
     .toLowerCase()
@@ -26,42 +22,38 @@ async function uniqueSlug(base: string): Promise<string> {
   return slug;
 }
 
-// ---------------------------------------------------------------------------
-// GET /api/project
-// Returns all projects for the authenticated developer with key + user counts.
-// ---------------------------------------------------------------------------
-
+// GET /api/project — any role
 export async function listProjects(req: DeveloperRequest, res: Response) {
   try {
-    const developerId = req.developer!.id;
+    const ownerId = req.workspaceOwnerId!;
 
     const projects = await prisma.project.findMany({
-      where: { developerId },
-      include: {
-        _count: {
-          select: {
-            apiKeys: { where: { revokedAt: null } },
-            endUsers: true,
-          },
-        },
-      },
+      where: { developerId: ownerId },
       orderBy: { createdAt: "desc" },
     });
 
-    return res.status(200).json({
-      success: true,
-      data: {
-        projects: projects.map((p) => ({
+    const projectsWithCounts = await Promise.all(
+      projects.map(async (p) => {
+        const [keyCount, userCount] = await Promise.all([
+          prisma.apiKey.count({ where: { projectId: p.id, revokedAt: null } }),
+          prisma.endUser.count({ where: { projectId: p.id } }),
+        ]);
+        return {
           id: p.id,
           name: p.name,
           slug: p.slug,
           logoUrl: p.logoUrl,
           createdAt: p.createdAt,
           updatedAt: p.updatedAt,
-          keyCount: p._count.apiKeys,
-          userCount: p._count.endUsers,
-        })),
-      },
+          keyCount,
+          userCount,
+        };
+      }),
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: { projects: projectsWithCounts },
     });
   } catch (error) {
     console.error("List projects error:", error);
@@ -71,14 +63,10 @@ export async function listProjects(req: DeveloperRequest, res: Response) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// POST /api/project
-// Body: { name: string }
-// ---------------------------------------------------------------------------
-
+// POST /api/project — admin + owner only
 export async function createProject(req: DeveloperRequest, res: Response) {
   try {
-    const developerId = req.developer!.id;
+    const ownerId = req.workspaceOwnerId!;
     const { name } = req.body;
 
     const base = slugify(name);
@@ -92,10 +80,7 @@ export async function createProject(req: DeveloperRequest, res: Response) {
     const slug = await uniqueSlug(base);
 
     const project = await prisma.project.create({
-      data: { developerId, name: name.trim(), slug },
-      include: {
-        _count: { select: { apiKeys: true, endUsers: true } },
-      },
+      data: { developerId: ownerId, name: name.trim(), slug },
     });
 
     return res.status(201).json({
@@ -109,8 +94,8 @@ export async function createProject(req: DeveloperRequest, res: Response) {
           logoUrl: project.logoUrl,
           createdAt: project.createdAt,
           updatedAt: project.updatedAt,
-          keyCount: project._count.apiKeys,
-          userCount: project._count.endUsers,
+          keyCount: 0,
+          userCount: 0,
         },
       },
     });
@@ -122,36 +107,31 @@ export async function createProject(req: DeveloperRequest, res: Response) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// PATCH /api/project/:id
-// Body: { name?: string }
-// ---------------------------------------------------------------------------
-
+// PATCH /api/project/:id — admin + owner only
 export async function updateProject(req: DeveloperRequest, res: Response) {
   try {
-    const developerId = req.developer!.id;
+    const ownerId = req.workspaceOwnerId!;
     const { id } = req.params;
     const { name } = req.body;
 
-    const project = await prisma.project.findUnique({ where: { id: id as string } });
-    if (!project || project.developerId !== developerId) {
+    const project = await prisma.project.findUnique({
+      where: { id: id as string },
+    });
+    if (!project || project.developerId !== ownerId) {
       return res
         .status(404)
         .json({ success: false, error: "Project not found." });
     }
 
     const updated = await prisma.project.update({
-      where: { id: id as string},
+      where: { id: id as string },
       data: { ...(name ? { name: name.trim() } : {}) },
-      include: {
-        _count: {
-          select: {
-            apiKeys: { where: { revokedAt: null } },
-            endUsers: true,
-          },
-        },
-      },
     });
+
+    const [keyCount, userCount] = await Promise.all([
+      prisma.apiKey.count({ where: { projectId: id as string, revokedAt: null } }),
+      prisma.endUser.count({ where: { projectId: id as string } }),
+    ]);
 
     return res.status(200).json({
       success: true,
@@ -164,8 +144,8 @@ export async function updateProject(req: DeveloperRequest, res: Response) {
           logoUrl: updated.logoUrl,
           createdAt: updated.createdAt,
           updatedAt: updated.updatedAt,
-          keyCount: updated._count.apiKeys,
-          userCount: updated._count.endUsers,
+          keyCount,
+          userCount,
         },
       },
     });
@@ -177,20 +157,16 @@ export async function updateProject(req: DeveloperRequest, res: Response) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// DELETE /api/project/:id
-// Cascades to apiKeys, endUsers, sessions, authEvents via Prisma onDelete.
-// ---------------------------------------------------------------------------
-
+// DELETE /api/project/:id — owner only
 export async function deleteProject(req: DeveloperRequest, res: Response) {
   try {
-    const developerId = req.developer!.id;
+    const ownerId = req.workspaceOwnerId!;
     const { id } = req.params;
 
-    if (!id) return res.status(400);
-
-    const project = await prisma.project.findUnique({ where: { id: id as string } });
-    if (!project || project.developerId !== developerId) {
+    const project = await prisma.project.findUnique({
+      where: { id: id as string },
+    });
+    if (!project || project.developerId !== ownerId) {
       return res
         .status(404)
         .json({ success: false, error: "Project not found." });

@@ -1,6 +1,10 @@
-// ─── projectRoutes.ts ────────────────────────────────────────────────────────
 import express from "express";
 import { requireAuth } from "../middlewares/authMiddleware.ts";
+import {
+  resolveWorkspace,
+  requireWriteAccess,
+  requireOwner,
+} from "../middlewares/resolveWorkspace.ts";
 import {
   listProjects,
   createProject,
@@ -17,9 +21,26 @@ const router = express.Router();
 
 router.use(requireAuth);
 
-router.get("/", listProjects);
-router.post("/", validateBody(createProjectSchema), createProject);
-router.patch("/:id", validateBody(updateProjectSchema), updateProject);
-router.delete("/:id", deleteProject);
+// Any role can read
+router.get("/", resolveWorkspace, listProjects);
+
+// Admin + owner can create and rename
+router.post(
+  "/",
+  resolveWorkspace,
+  requireWriteAccess,
+  validateBody(createProjectSchema),
+  createProject,
+);
+router.patch(
+  "/:id",
+  resolveWorkspace,
+  requireWriteAccess,
+  validateBody(updateProjectSchema),
+  updateProject,
+);
+
+// Only owner can delete
+router.delete("/:id", resolveWorkspace, requireOwner, deleteProject);
 
 export default router;

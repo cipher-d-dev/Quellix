@@ -16,6 +16,28 @@ if (!ACCESS_TOKEN_SECRET) {
 }
 
 // ---------------------------------------------------------------------------
+// Cookie config
+//
+// Rules:
+//   - Same domain (frontend + backend on same domain/subdomain): SameSite=Lax, Secure=true in prod
+//   - Cross-origin (different domains): SameSite=None, Secure=true (HTTPS required)
+//   - Localhost dev: SameSite=Lax, Secure=false
+//
+// We derive this from NODE_ENV. Make sure NODE_ENV is explicitly set in your
+// deployment environment variables — don't rely on defaults.
+// ---------------------------------------------------------------------------
+
+const IS_PROD = process.env.NODE_ENV === "production";
+
+// Log on startup so you can verify the cookie config being used
+console.log(
+  `[auth] Cookie config: NODE_ENV=${process.env.NODE_ENV} IS_PROD=${IS_PROD} ` +
+    `SameSite=${IS_PROD ? "none" : "lax"} Secure=${IS_PROD}`,
+);
+
+const SAME_SITE: "none" | "lax" = IS_PROD ? "none" : "lax";
+
+// ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
@@ -27,45 +49,22 @@ type SessionOwner =
 // Cookie helpers
 // ---------------------------------------------------------------------------
 
-const IS_PROD = process.env.NODE_ENV === "production";
-
-// In production the frontend and backend are on different domains, so cookies
-// must be SameSite=None + Secure to be sent cross-origin. In development
-// both run on localhost so Lax is fine and Secure is not required.
-const SAME_SITE = IS_PROD ? "none" : "lax";
-
-function setAccessTokenCookie(res: Response, token: string): void {
-  res.cookie("access_token", token, {
-    httpOnly: true,
-    secure: IS_PROD, // required when SameSite=None
-    sameSite: SAME_SITE,
-    maxAge: 15 * 60 * 1000,
-    path: "/",
-  });
-}
-
 function setRefreshTokenCookie(res: Response, token: string): void {
   res.cookie("refresh_token", token, {
     httpOnly: true,
-    secure: IS_PROD, // required when SameSite=None
+    secure: IS_PROD,
     sameSite: SAME_SITE,
     maxAge: REFRESH_TOKEN_EXPIRY_MS,
-    path: "/", // ← was "/auth/refresh", too restrictive
+    path: "/",
   });
 }
 
 export function clearAuthCookies(res: Response): void {
-  res.clearCookie("access_token", {
-    httpOnly: true,
-    secure: IS_PROD,
-    sameSite: SAME_SITE,
-    path: "/",
-  });
   res.clearCookie("refresh_token", {
     httpOnly: true,
     secure: IS_PROD,
     sameSite: SAME_SITE,
-    path: "/", // ← must match what was set
+    path: "/",
   });
 }
 
@@ -80,8 +79,6 @@ function generateAccessToken(owner: SessionOwner): string {
 }
 
 function generateRefreshToken(): string {
-  // Opaque random token — not a JWT so it can be fully revoked by
-  // deleting the session row, no blacklist needed
   return crypto.randomBytes(64).toString("hex");
 }
 
@@ -95,10 +92,6 @@ function ownerClause(owner: SessionOwner) {
 // Public API
 // ---------------------------------------------------------------------------
 
-/**
- * Issue a new access + refresh token pair, persist the session, set cookies.
- * Called on login and register for both developers and end users.
- */
 export async function issueTokens(
   owner: SessionOwner,
   res: Response,
@@ -124,10 +117,6 @@ export async function issueTokens(
   return { accessToken, refreshToken };
 }
 
-/**
- * Rotate tokens — validate the incoming refresh token, delete the old
- * session, issue a new pair. Returns null if invalid or expired.
- */
 export async function rotateTokens(
   incomingRefreshToken: string,
   res: Response,
@@ -138,7 +127,11 @@ export async function rotateTokens(
   });
 
   if (!session) {
-    clearAuthCookies(res);
+    // Do NOT call clearAuthCookies here. The session may simply not be found
+    // due to a race condition (e.g. the refresh call fired before the session
+    // was committed after login), or the token may belong to a different
+    // session store. Clearing the cookie here would log the user out
+    // immediately after a successful login.
     return null;
   }
 
@@ -148,38 +141,23 @@ export async function rotateTokens(
     return null;
   }
 
-  // Determine owner from whichever FK is set
   const owner: SessionOwner = session.developerId
     ? { type: "developer", id: session.developerId }
     : { type: "endUser", id: session.endUserId! };
 
-  // Delete old session before issuing new one — prevents replay attacks
   await prisma.session.delete({ where: { id: session.id } });
 
   return issueTokens(owner, res, meta);
 }
 
-/**
- * Revoke a single session by its refresh token.
- * Called on logout.
- */
 export async function revokeSession(refreshToken: string): Promise<void> {
   await prisma.session.deleteMany({ where: { refreshToken } });
 }
 
-/**
- * Revoke all sessions for a given owner.
- * Called after password reset so any attacker who triggered the reset
- * can't stay logged in.
- */
 export async function revokeAllSessions(owner: SessionOwner): Promise<void> {
   await prisma.session.deleteMany({ where: ownerClause(owner) });
 }
 
-/**
- * Verify an access token and return its payload.
- * Returns null if the token is invalid or expired.
- */
 export function verifyAccessToken(
   token: string,
 ): { id: string; type: "developer" | "endUser" } | null {

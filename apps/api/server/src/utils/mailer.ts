@@ -5,8 +5,7 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM = `Quellix <${process.env.RESEND_SENDER_EMAIL ?? "noreply@quellix.dev"}>`;
 const YEAR = new Date().getFullYear();
 const LOGO =
-  "https://raw.githubusercontent.com/cipher-d-dev/Quellix/1c53910fb4958b5e97485a7d53536d2dfb2a581e/apps/api/public/assets/favicon.png";
-
+  "https://github.com/cipher-d-dev/Quellix/blob/9ce0c59b86a790c1d877b5224d185e3a19f134fd/apps/frontend/src/assets/favicon.ico";
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------

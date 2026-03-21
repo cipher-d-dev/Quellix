@@ -3,10 +3,6 @@ import { prisma } from "../config/db.ts";
 import crypto from "crypto";
 import type { DeveloperRequest } from "../constants/types.ts";
 
-// ---------------------------------------------------------------------------
-// Key generation
-// ---------------------------------------------------------------------------
-
 const PREFIX = { PUBLISHABLE: "qlx_pub_", SECRET: "qlx_sec_" } as const;
 
 function generateKey(type: "PUBLISHABLE" | "SECRET"): {
@@ -14,32 +10,25 @@ function generateKey(type: "PUBLISHABLE" | "SECRET"): {
   keyHash: string;
   keyPrefix: string;
 } {
-  const random = crypto.randomBytes(24).toString("hex"); // 48 hex chars
+  const random = crypto.randomBytes(24).toString("hex");
   const fullKey = `${PREFIX[type]}${random}`;
   const keyHash = crypto.createHash("sha256").update(fullKey).digest("hex");
-  const keyPrefix = fullKey.slice(0, 16); // e.g. "qlx_pub_a1b2c3d4"
+  const keyPrefix = fullKey.slice(0, 16);
   return { fullKey, keyHash, keyPrefix };
 }
 
-// ---------------------------------------------------------------------------
-// GET /api/api-key?projectId=xxx
-// Lists all active (non-revoked) keys across the developer's projects.
-// Optionally filtered by projectId.
-// ---------------------------------------------------------------------------
-
+// GET /api/api-key — any role
 export async function listApiKeys(req: DeveloperRequest, res: Response) {
   try {
-    const developerId = req.developer!.id;
-    // req.query values are string | string[] | ParsedQs — normalise to string | undefined
+    const ownerId = req.workspaceOwnerId!;
     const projectId =
       typeof req.query.projectId === "string" ? req.query.projectId : undefined;
 
-    // Verify ownership if a specific projectId is provided
     if (projectId) {
       const project = await prisma.project.findUnique({
         where: { id: projectId },
       });
-      if (!project || project.developerId !== developerId) {
+      if (!project || project.developerId !== ownerId) {
         return res
           .status(404)
           .json({ success: false, error: "Project not found." });
@@ -50,8 +39,8 @@ export async function listApiKeys(req: DeveloperRequest, res: Response) {
       where: {
         revokedAt: null,
         project: {
-          developerId,
-          ...(projectId ? { id: String(projectId) } : {}),
+          developerId: ownerId,
+          ...(projectId ? { id: projectId } : {}),
         },
       },
       include: { project: { select: { id: true, name: true } } },
@@ -81,23 +70,16 @@ export async function listApiKeys(req: DeveloperRequest, res: Response) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// POST /api/api-key
-// Body: { projectId: string; name: string; type: "PUBLISHABLE" | "SECRET" }
-//
-// Returns the plaintext key ONCE — the server only ever stores the hash.
-// ---------------------------------------------------------------------------
-
+// POST /api/api-key — admin + owner only
 export async function createApiKey(req: DeveloperRequest, res: Response) {
   try {
-    const developerId = req.developer!.id;
+    const ownerId = req.workspaceOwnerId!;
     const { projectId, name, type = "PUBLISHABLE" } = req.body;
 
-    // Verify developer owns the project
     const project = await prisma.project.findUnique({
       where: { id: projectId },
     });
-    if (!project || project.developerId !== developerId) {
+    if (!project || project.developerId !== ownerId) {
       return res
         .status(404)
         .json({ success: false, error: "Project not found." });
@@ -114,7 +96,6 @@ export async function createApiKey(req: DeveloperRequest, res: Response) {
       message:
         "API key created. Copy it now — this is the only time it will be shown.",
       data: {
-        // plaintext key — returned ONCE, not stored
         key: fullKey,
         apiKey: {
           id: apiKey.id,
@@ -136,17 +117,11 @@ export async function createApiKey(req: DeveloperRequest, res: Response) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// DELETE /api/api-key/:id
-// Soft-deletes the key by setting revokedAt. Fully removes from active listings.
-// ---------------------------------------------------------------------------
-
+// DELETE /api/api-key/:id — admin + owner only
 export async function revokeApiKey(req: DeveloperRequest, res: Response) {
   try {
-    const developerId = req.developer!.id;
+    const ownerId = req.workspaceOwnerId!;
     const { id } = req.params;
-
-    if (!id) return res.status(400);
 
     const apiKey = await prisma.apiKey.findUnique({ where: { id: id as string } });
     if (!apiKey) {
@@ -155,12 +130,11 @@ export async function revokeApiKey(req: DeveloperRequest, res: Response) {
         .json({ success: false, error: "API key not found." });
     }
 
-    // Verify the key belongs to one of this developer's projects
     const project = await prisma.project.findUnique({
       where: { id: apiKey.projectId },
       select: { developerId: true },
     });
-    if (!project || project.developerId !== developerId) {
+    if (!project || project.developerId !== ownerId) {
       return res
         .status(404)
         .json({ success: false, error: "API key not found." });

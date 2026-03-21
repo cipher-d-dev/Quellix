@@ -241,6 +241,49 @@ export async function removeMember(req: DeveloperRequest, res: Response) {
 }
 
 // ---------------------------------------------------------------------------
+// GET /api/team/memberships
+// Lists workspaces the authenticated developer is a member of (not as owner).
+// ---------------------------------------------------------------------------
+
+export async function listMemberships(req: DeveloperRequest, res: Response) {
+  try {
+    const memberId = req.developer!.id;
+
+    const memberships = await prisma.teamMember.findMany({
+      where: { memberId },
+      include: {
+        owner: {
+          select: {
+            id: true,
+            fullName: true,
+            email: true,
+            username: true,
+            avatarUrl: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "asc" },
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        memberships: memberships.map((m) => ({
+          id: m.id,
+          role: m.role,
+          joinedAt: m.createdAt,
+          workspace: m.owner,
+        })),
+      },
+    });
+  } catch (error) {
+    console.error("List memberships error:", error);
+    return res
+      .status(500)
+      .json({ success: false, error: "Something went wrong." });
+  }
+}
+// ---------------------------------------------------------------------------
 // GET /api/team/invites/info?token=xxx   (public — no auth required)
 // Returns invite metadata so the accept page can show who sent it.
 // ---------------------------------------------------------------------------
