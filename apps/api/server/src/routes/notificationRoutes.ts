@@ -9,7 +9,7 @@ import {
   deleteNotification,
   deleteAllNotifications,
   broadcastNotification,
-} from "../controllers/NotificationController.ts";
+} from "../controllers/notificationController.ts";
 
 const router = express.Router();
 
