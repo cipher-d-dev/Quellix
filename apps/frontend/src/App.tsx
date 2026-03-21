@@ -20,7 +20,7 @@ import { NotFound } from "./pages/NotFound";
 import { Landing } from "./pages/LandingPage";
 import { AdminNotifications } from "./pages/admin/AdminNotifications";
 import { NotificationsPage } from "./pages/notifications/NotificationsPage";
-import { NetworkStatusProvider } from "./context/NetworkStatusCOntext";
+import { NetworkStatusProvider } from "./context/NetworkStatusContext";
 
 export default function App() {
   return (
