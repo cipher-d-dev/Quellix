@@ -3,6 +3,7 @@ import { prisma } from "../config/db.ts";
 import crypto from "crypto";
 import { sendTeamInviteEmail } from "../utils/mailer.ts";
 import type { DeveloperRequest } from "../constants/types.ts";
+import { createNotification } from "./NotificationController.ts";
 
 const INVITE_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
@@ -161,6 +162,17 @@ export async function sendInvite(req: DeveloperRequest, res: Response) {
       (e) => console.error("Team invite email failed:", e),
     );
 
+    // If the invitee already has a Quellix account, create an in-app notification
+    if (targetDev) {
+      createNotification({
+        developerId: targetDev.id,
+        type: "TEAM_INVITE",
+        title: "You've been invited to join a team",
+        body: `${inviterName} invited you to their Quellix workspace as ${role === "admin" ? "an admin" : "a member"}.`,
+        metadata: { inviteToken: token, inviterName, role, acceptUrl },
+      });
+    }
+
     return res.status(201).json({
       success: true,
       message: `Invite sent to ${normalizedEmail}.`,
@@ -192,7 +204,9 @@ export async function cancelInvite(req: DeveloperRequest, res: Response) {
     const ownerId = req.developer!.id;
     const { id } = req.params;
 
-    const invite = await prisma.teamInvite.findUnique({ where: { id: id as string } });
+    const invite = await prisma.teamInvite.findUnique({
+      where: { id: id as string },
+    });
     if (!invite || invite.ownerId !== ownerId) {
       return res
         .status(404)
@@ -222,7 +236,9 @@ export async function removeMember(req: DeveloperRequest, res: Response) {
     const ownerId = req.developer!.id;
     const { id } = req.params;
 
-    const member = await prisma.teamMember.findUnique({ where: { id: id as string } });
+    const member = await prisma.teamMember.findUnique({
+      where: { id: id as string },
+    });
     if (!member || member.ownerId !== ownerId) {
       return res
         .status(404)
@@ -316,12 +332,10 @@ export async function getInviteInfo(req: Request, res: Response) {
     }
 
     if (invite.acceptedAt) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          error: "This invite has already been accepted.",
-        });
+      return res.status(400).json({
+        success: false,
+        error: "This invite has already been accepted.",
+      });
     }
 
     if (invite.expiresAt < new Date()) {
@@ -414,6 +428,24 @@ export async function acceptInvite(req: DeveloperRequest, res: Response) {
             }),
           ]),
     ]);
+
+    // Notify the workspace owner that someone accepted their invite
+    const accepter = await prisma.developer.findUnique({
+      where: { id: memberId },
+      select: { fullName: true, username: true, email: true },
+    });
+    const accepterName =
+      accepter?.fullName ??
+      accepter?.username ??
+      accepter?.email?.split("@")[0] ??
+      "Someone";
+    createNotification({
+      developerId: invite.ownerId,
+      type: "TEAM_ACCEPTED",
+      title: "Team invite accepted",
+      body: `${accepterName} accepted your invite and joined your workspace.`,
+      metadata: { memberId, memberName: accepterName },
+    });
 
     return res.status(200).json({
       success: true,

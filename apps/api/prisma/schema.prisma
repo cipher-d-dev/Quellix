@@ -32,6 +32,8 @@ model Developer {
   authEvents         AuthEvent[]
 
   // Team: slots where this developer is the workspace owner
+  notifications Notification[]
+
   teamMembersOwned TeamMember[] @relation("TeamOwner")
   // Team: slots where this developer is a collaborator on someone else's workspace
   teamMemberships  TeamMember[] @relation("TeamMember")
@@ -369,4 +371,33 @@ model WebhookAttempt {
   @@index([webhookId])
   @@index([createdAt])
   @@map("webhook_attempts")
+}
+
+// ============================================================
+// NOTIFICATIONS
+// ============================================================
+
+enum NotificationType {
+  TEAM_INVITE // Someone sent you a team invite
+  TEAM_ACCEPTED // Someone accepted your team invite
+  ANNOUNCEMENT // Platform-wide message from Quellix admin
+  SYSTEM // Automated system message (e.g. billing, limits)
+}
+
+model Notification {
+  id          String           @id @default(cuid())
+  developerId String           @map("developer_id")
+  type        NotificationType
+  title       String
+  body        String
+  metadata    Json? // e.g. { inviteToken, inviterName, role }
+  read        Boolean          @default(false)
+  createdAt   DateTime         @default(now()) @map("created_at")
+
+  developer Developer @relation(fields: [developerId], references: [id], onDelete: Cascade)
+
+  @@index([developerId])
+  @@index([developerId, read])
+  @@index([createdAt])
+  @@map("notifications")
 }

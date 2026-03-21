@@ -5,6 +5,7 @@ import projectRoutes from "./routes/projectRoutes.ts";
 import apiKeyRoutes from "./routes/apiKeyRoutes.ts";
 import teamRoutes from "./routes/teamRoutes.ts";
 import dashboardRoutes from "./routes/dashboardRoutes.ts";
+import notificationRoutes from "./routes/notificationRoutes.ts";
 import { baseHTMLResponse } from "./constants/responseConstants.ts";
 import { config } from "dotenv";
 import { connectDB, disconnectDB } from "./config/db.ts";
@@ -64,6 +65,7 @@ app.use("/api/project", projectRoutes);
 app.use("/api/api-key", apiKeyRoutes);
 app.use("/api/team", teamRoutes);
 app.use("/api/dashboard", dashboardRoutes);
+app.use("/api/notifications", notificationRoutes);
 
 // ── Root ────────────────────────────────────────────────────────────────────
 
