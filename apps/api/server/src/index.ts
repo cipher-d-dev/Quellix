@@ -109,6 +109,30 @@ app.get("/", (req, res) => {
   res.status(200).send(baseHTMLResponse);
 });
 
+// __ Third Party Cookies Test _______________________
+
+app.get("/api/test/set-cookie", (req, res) => {
+  const IS_PROD = process.env.NODE_ENV === "production";
+  res.cookie("__qlx_xorigin_test", "1", {
+    httpOnly: false, // must be readable by JS so the frontend can verify it landed
+    secure: IS_PROD,
+    sameSite: IS_PROD ? "none" : "lax",
+    maxAge: 30 * 1000, // 30 seconds — self-destructs
+    path: "/",
+  });
+  res.json({ success: true });
+});
+
+// GET /api/test/read-cookie
+// Returns whether the test cookie arrived. The frontend calls this after
+// set-cookie to confirm the round-trip worked.
+app.get("/api/test/read-cookie", (req, res) => {
+  const received = req.cookies.__qlx_xorigin_test === "1";
+  // Clean up immediately
+  res.clearCookie("__qlx_xorigin_test", { path: "/" });
+  res.json({ crossOriginCookiesWork: received });
+});
+
 // ── Process management ──────────────────────────────────────────────────────
 
 const server = app.listen(PORT, () => {
