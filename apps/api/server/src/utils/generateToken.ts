@@ -8,8 +8,8 @@ import { prisma } from "../config/db.ts";
 // ---------------------------------------------------------------------------
 
 const ACCESS_TOKEN_SECRET = process.env.JWT_SECRET!;
-const ACCESS_TOKEN_EXPIRY = "15m";
-const REFRESH_TOKEN_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const ACCESS_TOKEN_EXPIRY_DEFAULT = "15m";
+const REFRESH_TOKEN_EXPIRY_MS_DEFAULT = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 if (!ACCESS_TOKEN_SECRET) {
   throw new Error("JWT_SECRET must be defined in environment variables");
@@ -17,19 +17,10 @@ if (!ACCESS_TOKEN_SECRET) {
 
 // ---------------------------------------------------------------------------
 // Cookie config
-//
-// Rules:
-//   - Same domain (frontend + backend on same domain/subdomain): SameSite=Lax, Secure=true in prod
-//   - Cross-origin (different domains): SameSite=None, Secure=true (HTTPS required)
-//   - Localhost dev: SameSite=Lax, Secure=false
-//
-// We derive this from NODE_ENV. Make sure NODE_ENV is explicitly set in your
-// deployment environment variables — don't rely on defaults.
 // ---------------------------------------------------------------------------
 
 const IS_PROD = process.env.NODE_ENV === "production";
 
-// Log on startup so you can verify the cookie config being used
 console.log(
   `[auth] Cookie config: NODE_ENV=${process.env.NODE_ENV} IS_PROD=${IS_PROD} ` +
     `SameSite=${IS_PROD ? "none" : "lax"} Secure=${IS_PROD}`,
@@ -41,12 +32,26 @@ const SAME_SITE: "none" | "lax" = IS_PROD ? "none" : "lax";
 // Types
 // ---------------------------------------------------------------------------
 
-type SessionOwner =
+export type SessionOwner =
   | { type: "developer"; id: string }
-  | { type: "endUser"; id: string };
+  | {
+      type: "endUser";
+      id: string;
+      // Required for end-user sessions — stored on the Session row so we can
+      // validate project context and revoke all sessions for a project without
+      // a join through EndUser.
+      projectId: string;
+    };
+
+// What gets embedded in the JWT payload.
+// Developer tokens never carry projectId.
+// End-user tokens always carry projectId.
+export type TokenPayload =
+  | { type: "developer"; id: string }
+  | { type: "endUser"; id: string; projectId: string };
 
 // ---------------------------------------------------------------------------
-// Cookie helpers
+// Cookie helpers — only used for developer console sessions
 // ---------------------------------------------------------------------------
 
 function setRefreshTokenCookie(res: Response, token: string): void {
@@ -54,7 +59,7 @@ function setRefreshTokenCookie(res: Response, token: string): void {
     httpOnly: true,
     secure: IS_PROD,
     sameSite: SAME_SITE,
-    maxAge: REFRESH_TOKEN_EXPIRY_MS,
+    maxAge: REFRESH_TOKEN_EXPIRY_MS_DEFAULT,
     path: "/",
   });
 }
@@ -72,9 +77,21 @@ export function clearAuthCookies(res: Response): void {
 // Token generation
 // ---------------------------------------------------------------------------
 
-function generateAccessToken(owner: SessionOwner): string {
-  return jwt.sign({ id: owner.id, type: owner.type }, ACCESS_TOKEN_SECRET, {
-    expiresIn: ACCESS_TOKEN_EXPIRY,
+function generateAccessToken(
+  owner: SessionOwner,
+  expirySeconds?: number,
+): string {
+  const payload: TokenPayload =
+    owner.type === "developer"
+      ? { type: "developer", id: owner.id }
+      : { type: "endUser", id: owner.id, projectId: owner.projectId };
+
+  const expiresIn = expirySeconds
+    ? (`${expirySeconds}s` as const)
+    : ACCESS_TOKEN_EXPIRY_DEFAULT;
+
+  return jwt.sign(payload, ACCESS_TOKEN_SECRET, {
+    expiresIn,
   } as jwt.SignOptions);
 }
 
@@ -83,23 +100,41 @@ function generateRefreshToken(): string {
 }
 
 function ownerClause(owner: SessionOwner) {
-  return owner.type === "developer"
-    ? { developerId: owner.id }
-    : { endUserId: owner.id };
+  if (owner.type === "developer") {
+    return { developerId: owner.id };
+  }
+  return { endUserId: owner.id, projectId: owner.projectId };
 }
 
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
+/**
+ * Issues a new access + refresh token pair, persists the session, and
+ * (for developer sessions) sets the httpOnly refresh-token cookie.
+ *
+ * For end-user SDK sessions, the refresh token is returned in the response
+ * body by the SDK controller — not set as a cookie — because the SDK runs
+ * on a different origin from the developer console.
+ *
+ * @param owner      Who the session belongs to.
+ * @param res        Express response object (used to set cookie for developers).
+ * @param meta       Optional IP + user agent for audit purposes.
+ * @param settings   Optional per-project session config (duration overrides).
+ */
 export async function issueTokens(
   owner: SessionOwner,
   res: Response,
   meta?: { ipAddress?: string; userAgent?: string },
+  settings?: { sessionDurationDays?: number; jwtDurationSeconds?: number },
 ): Promise<{ accessToken: string; refreshToken: string }> {
-  const accessToken = generateAccessToken(owner);
+  const jwtSeconds = settings?.jwtDurationSeconds ?? undefined;
+  const sessionMs = (settings?.sessionDurationDays ?? 30) * 24 * 60 * 60 * 1000;
+
+  const accessToken = generateAccessToken(owner, jwtSeconds);
   const refreshToken = generateRefreshToken();
-  const expiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRY_MS);
+  const expiresAt = new Date(Date.now() + sessionMs);
 
   await prisma.session.create({
     data: {
@@ -112,11 +147,19 @@ export async function issueTokens(
     },
   });
 
-  setRefreshTokenCookie(res, refreshToken);
+  // Only set the cookie for developer console sessions.
+  // SDK (end-user) sessions return the token in the response body.
+  if (owner.type === "developer") {
+    setRefreshTokenCookie(res, refreshToken);
+  }
 
   return { accessToken, refreshToken };
 }
 
+/**
+ * Rotates a refresh token: validates the old token, deletes the old session,
+ * and issues a fresh pair. Returns null if the token is invalid or expired.
+ */
 export async function rotateTokens(
   incomingRefreshToken: string,
   res: Response,
@@ -127,23 +170,25 @@ export async function rotateTokens(
   });
 
   if (!session) {
-    // Do NOT call clearAuthCookies here. The session may simply not be found
-    // due to a race condition (e.g. the refresh call fired before the session
-    // was committed after login), or the token may belong to a different
-    // session store. Clearing the cookie here would log the user out
-    // immediately after a successful login.
+    // Do NOT clear cookies here — the session may simply not be found due
+    // to a race condition after login. Clearing would immediately log the
+    // developer out.
     return null;
   }
 
   if (session.expiresAt < new Date()) {
     await prisma.session.delete({ where: { id: session.id } });
-    clearAuthCookies(res);
+    if (session.developerId) clearAuthCookies(res);
     return null;
   }
 
   const owner: SessionOwner = session.developerId
     ? { type: "developer", id: session.developerId }
-    : { type: "endUser", id: session.endUserId! };
+    : {
+        type: "endUser",
+        id: session.endUserId!,
+        projectId: session.projectId!,
+      };
 
   await prisma.session.delete({ where: { id: session.id } });
 
@@ -158,15 +203,45 @@ export async function revokeAllSessions(owner: SessionOwner): Promise<void> {
   await prisma.session.deleteMany({ where: ownerClause(owner) });
 }
 
-export function verifyAccessToken(
-  token: string,
-): { id: string; type: "developer" | "endUser" } | null {
+/**
+ * Revokes all active sessions for every end user in a project.
+ * Called when a developer deletes a project or revokes all access.
+ */
+export async function revokeAllProjectSessions(
+  projectId: string,
+): Promise<void> {
+  await prisma.session.deleteMany({ where: { projectId } });
+}
+
+/**
+ * Verifies a JWT access token. Returns the typed payload or null.
+ * Always check `payload.type` before using — developer and end-user
+ * tokens must never be accepted interchangeably.
+ */
+export function verifyAccessToken(token: string): TokenPayload | null {
   try {
-    return jwt.verify(token, ACCESS_TOKEN_SECRET) as {
-      id: string;
-      type: "developer" | "endUser";
-    };
+    return jwt.verify(token, ACCESS_TOKEN_SECRET) as TokenPayload;
   } catch {
     return null;
   }
+}
+
+/**
+ * Type guard — ensures the token payload belongs to a developer.
+ * Use in developer console middleware.
+ */
+export function isDeveloperPayload(
+  payload: TokenPayload,
+): payload is { type: "developer"; id: string } {
+  return payload.type === "developer";
+}
+
+/**
+ * Type guard — ensures the token payload belongs to an end user.
+ * Use in SDK middleware.
+ */
+export function isEndUserPayload(
+  payload: TokenPayload,
+): payload is { type: "endUser"; id: string; projectId: string } {
+  return payload.type === "endUser";
 }

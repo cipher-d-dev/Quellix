@@ -10,7 +10,7 @@ Quellix MVP ships a fully working, self-hostable authentication system with a Re
 
 ---
 
-## Architecture
+## Architecture - Change
 
 ```
 quellix/

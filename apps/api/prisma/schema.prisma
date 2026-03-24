@@ -52,12 +52,14 @@ model Project {
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  developer     Developer      @relation(fields: [developerId], references: [id], onDelete: Cascade)
+  developer     Developer        @relation(fields: [developerId], references: [id], onDelete: Cascade)
   apiKeys       ApiKey[]
   endUsers      EndUser[]
+  sessions      Session[]
   organizations Organization[]
   webhooks      Webhook[]
   authEvents    AuthEvent[]
+  settings      ProjectSettings?
 
   @@index([developerId])
   @@map("projects")
@@ -70,6 +72,10 @@ model ApiKey {
   keyHash    String     @unique @map("key_hash") // SHA-256 of full key — never stored plaintext
   keyPrefix  String     @map("key_prefix") // first ~16 chars for display (qlx_pub_xxxx)
   type       ApiKeyType @default(PUBLISHABLE)
+  // Fine-grained permission scopes — empty array means full access for the
+  // key type. Reserved for future use; add scope checks in resolveSdkKey.
+  // Examples: ["users:read", "users:write", "sessions:revoke"]
+  scopes     String[]   @default([])
   lastUsedAt DateTime?  @map("last_used_at")
   expiresAt  DateTime?  @map("expires_at")
   createdAt  DateTime   @default(now()) @map("created_at")
@@ -103,6 +109,12 @@ model EndUser {
   twoFactorEnabled Boolean   @default(false) @map("two_factor_enabled")
   banned           Boolean   @default(false)
   lastSignInAt     DateTime? @map("last_sign_in_at")
+  // Arbitrary key-value data the developer wants to attach to their users.
+  // Equivalent to Clerk's publicMetadata. Never returned in SDK tokens.
+  metadata         Json?
+  // Optional ID for linking an EndUser to a record in the developer's own
+  // database. Useful for migration from an existing auth system.
+  externalId       String?   @map("external_id")
   createdAt        DateTime  @default(now()) @map("created_at")
   updatedAt        DateTime  @updatedAt @map("updated_at")
 
@@ -115,8 +127,10 @@ model EndUser {
   authEvents           AuthEvent[]
 
   @@unique([projectId, email])
+  @@unique([projectId, externalId]) // enforce uniqueness within a project
   @@index([projectId])
   @@index([email])
+  @@index([externalId])
   @@map("end_users")
 }
 
@@ -128,6 +142,9 @@ model Session {
   id           String   @id @default(cuid())
   developerId  String?  @map("developer_id")
   endUserId    String?  @map("end_user_id")
+  // projectId is set for end-user sessions. Allows fast revocation of all
+  // sessions for a project without joining through EndUser.
+  projectId    String?  @map("project_id")
   token        String   @unique
   refreshToken String?  @unique @map("refresh_token")
   ipAddress    String?  @map("ip_address")
@@ -138,10 +155,13 @@ model Session {
 
   developer Developer? @relation(fields: [developerId], references: [id], onDelete: Cascade)
   endUser   EndUser?   @relation(fields: [endUserId], references: [id], onDelete: Cascade)
+  project   Project?   @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([developerId])
   @@index([endUserId])
+  @@index([projectId])
   @@index([token])
+  @@index([refreshToken])
   @@index([expiresAt])
   @@map("sessions")
 }
@@ -400,4 +420,69 @@ model Notification {
   @@index([developerId, read])
   @@index([createdAt])
   @@map("notifications")
+}
+
+// ============================================================
+// PROJECT SETTINGS — Per-project configuration for SDK behaviour
+// ============================================================
+
+model ProjectSettings {
+  id        String @id @default(cuid())
+  projectId String @unique @map("project_id")
+
+  // ── CORS & Security ──────────────────────────────────────────────────────
+  // List of origins allowed to make SDK requests using a publishable key.
+  // Empty array = open CORS (allow any origin) — suitable for early dev.
+  // Add origins in production to prevent unauthorised sites using your key.
+  // e.g. ["https://myapp.com", "https://staging.myapp.com"]
+  allowedOrigins String[] @default([]) @map("allowed_origins")
+
+  // Whitelist of redirect URIs allowed during OAuth flows.
+  // An empty array disables OAuth for this project.
+  allowedCallbackUrls String[] @default([]) @map("allowed_callback_urls")
+
+  // ── Registration & Sign-in ───────────────────────────────────────────────
+  // Whether new end users can self-register. Set to false to make the project
+  // invite-only (users must be created via the secret key API).
+  allowSignups Boolean @default(true) @map("allow_signups")
+
+  // Force email verification before a user can sign in.
+  requireEmailVerification Boolean @default(false) @map("require_email_verification")
+
+  // Reject email addresses from known disposable email providers.
+  blockDisposableEmails Boolean @default(false) @map("block_disposable_emails")
+
+  // Which auth providers end users can use. Empty = all enabled.
+  // e.g. ["email", "github", "google"]
+  enabledAuthProviders String[] @default([]) @map("enabled_auth_providers")
+
+  // ── Password Policy ──────────────────────────────────────────────────────
+  passwordMinLength        Int     @default(8) @map("password_min_length")
+  passwordRequireUppercase Boolean @default(false) @map("password_require_uppercase")
+  passwordRequireNumber    Boolean @default(false) @map("password_require_number")
+  passwordRequireSymbol    Boolean @default(false) @map("password_require_symbol")
+
+  // ── Session Lifetime ─────────────────────────────────────────────────────
+  // How long a refresh token (SDK session) lives. Default 30 days.
+  sessionDurationDays Int @default(30) @map("session_duration_days")
+
+  // How long an access token (JWT) lives in seconds. Default 900 (15 min).
+  jwtDurationSeconds Int @default(900) @map("jwt_duration_seconds")
+
+  // Maximum concurrent active sessions per end user. Null = unlimited.
+  // When exceeded, the oldest session is revoked automatically.
+  maxSessionsPerUser Int? @map("max_sessions_per_user")
+
+  // ── Custom Branding (Email) ───────────────────────────────────────────────
+  // If set, Quellix sends transactional emails (verification, reset) using
+  // the developer's own email address instead of noreply@quellix.com.
+  customEmailFromName    String? @map("custom_email_from_name")
+  customEmailFromAddress String? @map("custom_email_from_address")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("project_settings")
 }
