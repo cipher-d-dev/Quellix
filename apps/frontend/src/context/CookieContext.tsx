@@ -5,17 +5,18 @@ import React, {
     useState,
 } from "react";
 
+const API_URL = import.meta.env.VITE_API_URL as string; // e.g. https://quellix.onrender.com/api
+
 // ---------------------------------------------------------------------------
-// Detection
-// Attempts to write + read a test cookie. Works even when navigator.cookieEnabled
-// lies (some browsers report true but still block third-party cookies).
+// Detection helpers
 // ---------------------------------------------------------------------------
-function detectCookiesEnabled(): boolean {
+
+// 1. First-party check — write + read a same-domain cookie
+function detectFirstPartyCookies(): boolean {
     if (typeof document === "undefined") return true;
     try {
         document.cookie = "__qlx_test=1; SameSite=Strict; path=/";
         const ok = document.cookie.includes("__qlx_test");
-        // clean up
         document.cookie =
             "__qlx_test=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/";
         return ok;
@@ -24,11 +25,38 @@ function detectCookiesEnabled(): boolean {
     }
 }
 
+// 2. Cross-origin check — ask the backend to set a cookie then verify it
+//    came back on the next request. This is the real test for the auth flow.
+async function detectCrossOriginCookies(): Promise<boolean> {
+    try {
+        // Step 1: ask backend to set a short-lived test cookie
+        const setRes = await fetch(`${API_URL}/test/set-cookie`, {
+            method: "GET",
+            credentials: "include", // ← must match withCredentials: true in axios
+        });
+        if (!setRes.ok) return false;
+
+        // Step 2: send a follow-up request — if the cookie travels back, we're good
+        const readRes = await fetch(`${API_URL}/test/read-cookie`, {
+            method: "GET",
+            credentials: "include",
+        });
+        if (!readRes.ok) return false;
+
+        const { crossOriginCookiesWork } = await readRes.json();
+        return crossOriginCookiesWork === true;
+    } catch {
+        return false;
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Context
 // ---------------------------------------------------------------------------
+type CookieStatus = "checking" | "first-party-blocked" | "cross-origin-blocked" | "ok";
+
 interface CookieCtx {
-    cookiesEnabled: boolean;
+    cookieStatus: CookieStatus;
     dismissWarning: () => void;
 }
 
@@ -44,30 +72,53 @@ export function useCookies() {
 // Provider
 // ---------------------------------------------------------------------------
 export function CookieProvider({ children }: { children: React.ReactNode }) {
-    const [cookiesEnabled, setCookiesEnabled] = useState(true);
+    const [status, setStatus] = useState<CookieStatus>("checking");
     const [dismissed, setDismissed] = useState(false);
 
     useEffect(() => {
-        setCookiesEnabled(detectCookiesEnabled());
+        async function check() {
+            // First-party check is synchronous — do it first
+            if (!detectFirstPartyCookies()) {
+                setStatus("first-party-blocked");
+                return;
+            }
+            // Cross-origin check requires a round-trip to the API
+            const xorigin = await detectCrossOriginCookies();
+            setStatus(xorigin ? "ok" : "cross-origin-blocked");
+        }
+        check();
     }, []);
 
     const dismissWarning = () => setDismissed(true);
 
+    const showPopup =
+        !dismissed && (status === "first-party-blocked" || status === "cross-origin-blocked");
+
     return (
-        <CookieContext.Provider value={{ cookiesEnabled, dismissWarning }}>
+        <CookieContext.Provider value={{ cookieStatus: status, dismissWarning }}>
             {children}
-            {!cookiesEnabled && !dismissed && <CookieBlockedPopup onDismiss={dismissWarning} />}
+            {showPopup && (
+                <CookieBlockedPopup
+                    type={status as "first-party-blocked" | "cross-origin-blocked"}
+                    onDismiss={dismissWarning}
+                />
+            )}
         </CookieContext.Provider>
     );
 }
 
 // ---------------------------------------------------------------------------
-// Liquid glass popup
+// Popup
 // ---------------------------------------------------------------------------
-function CookieBlockedPopup({ onDismiss }: { onDismiss: () => void }) {
+function CookieBlockedPopup({
+    type,
+    onDismiss,
+}: {
+    type: "first-party-blocked" | "cross-origin-blocked";
+    onDismiss: () => void;
+}) {
     const [visible, setVisible] = useState(false);
 
-    // mount → animate in
     useEffect(() => {
         const t = setTimeout(() => setVisible(true), 60);
         return () => clearTimeout(t);
@@ -78,9 +129,11 @@ function CookieBlockedPopup({ onDismiss }: { onDismiss: () => void }) {
         setTimeout(onDismiss, 350);
     }
 
+    const isCrossOrigin = type === "cross-origin-blocked";
+
     return (
         <>
-            {/* Backdrop — subtle, doesn't block content */}
+            {/* Backdrop */}
             <div
                 style={{
                     position: "fixed",
@@ -106,11 +159,10 @@ function CookieBlockedPopup({ onDismiss }: { onDismiss: () => void }) {
                         ? "translateX(-50%) translateY(0)"
                         : "translateX(-50%) translateY(20px)",
                     zIndex: 9001,
-                    width: "min(420px, calc(100vw - 40px))",
+                    width: "min(440px, calc(100vw - 40px))",
                     opacity: visible ? 1 : 0,
-                    transition: "transform 0.4s cubic-bezier(0.34,1.56,0.64,1), opacity 0.35s ease",
-
-                    // Liquid glass
+                    transition:
+                        "transform 0.4s cubic-bezier(0.34,1.56,0.64,1), opacity 0.35s ease",
                     background: "rgba(255,255,255,0.06)",
                     backdropFilter: "blur(32px) saturate(180%) brightness(1.05)",
                     WebkitBackdropFilter: "blur(32px) saturate(180%) brightness(1.05)",
@@ -125,9 +177,15 @@ function CookieBlockedPopup({ onDismiss }: { onDismiss: () => void }) {
                     padding: "22px 24px 20px",
                 }}
             >
-                {/* Top row — icon + title + close */}
-                <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 12 }}>
-                    {/* Cookie icon */}
+                {/* Header */}
+                <div
+                    style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: 14,
+                        marginBottom: 12,
+                    }}
+                >
                     <div
                         style={{
                             flexShrink: 0,
@@ -156,7 +214,9 @@ function CookieBlockedPopup({ onDismiss }: { onDismiss: () => void }) {
                                 letterSpacing: -0.2,
                             }}
                         >
-                            Cookies are disabled
+                            {isCrossOrigin
+                                ? "Third-party cookies are blocked"
+                                : "Cookies are disabled"}
                         </p>
                         <p
                             style={{
@@ -167,12 +227,13 @@ function CookieBlockedPopup({ onDismiss }: { onDismiss: () => void }) {
                                 fontWeight: 300,
                             }}
                         >
-                            Quellix needs cookies to keep you signed in. Without them your
-                            session can't be saved between visits.
+                            {isCrossOrigin
+                                ? "Your browser is blocking cross-site cookies. Quellix needs them to keep you signed in across the app and API."
+                                : "Quellix needs cookies to keep you signed in. Without them your session can't be saved between visits."}
                         </p>
                     </div>
 
-                    {/* Close button */}
+                    {/* Close */}
                     <button
                         onClick={handleDismiss}
                         aria-label="Dismiss"
@@ -202,14 +263,22 @@ function CookieBlockedPopup({ onDismiss }: { onDismiss: () => void }) {
                             (e.currentTarget as HTMLElement).style.background = "transparent";
                         }}
                     >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                        <svg
+                            width="12"
+                            height="12"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                        >
                             <line x1="18" y1="6" x2="6" y2="18" />
                             <line x1="6" y1="6" x2="18" y2="18" />
                         </svg>
                     </button>
                 </div>
 
-                {/* How-to steps */}
+                {/* Instructions */}
                 <div
                     style={{
                         background: "rgba(255,255,255,0.04)",
@@ -229,12 +298,16 @@ function CookieBlockedPopup({ onDismiss }: { onDismiss: () => void }) {
                             textTransform: "uppercase",
                         }}
                     >
-                        How to enable cookies
+                        How to fix this
                     </p>
-                    <BrowserSteps />
+                    {isCrossOrigin ? (
+                        <CrossOriginSteps />
+                    ) : (
+                        <FirstPartySteps />
+                    )}
                 </div>
 
-                {/* CTA row */}
+                {/* CTA */}
                 <div style={{ display: "flex", gap: 8 }}>
                     <button
                         onClick={() => window.location.reload()}
@@ -257,11 +330,10 @@ function CookieBlockedPopup({ onDismiss }: { onDismiss: () => void }) {
                         }}
                         onMouseLeave={(e) => {
                             (e.currentTarget as HTMLElement).style.opacity = "1";
-                            (e.currentTarget as HTMLElement).style.transform =
-                                "translateY(0)";
+                            (e.currentTarget as HTMLElement).style.transform = "translateY(0)";
                         }}
                     >
-                        I've enabled them — retry
+                        I've fixed it — retry
                     </button>
                     <button
                         onClick={handleDismiss}
@@ -299,42 +371,22 @@ function CookieBlockedPopup({ onDismiss }: { onDismiss: () => void }) {
 }
 
 // ---------------------------------------------------------------------------
-// Per-browser instructions
+// Instruction sets
 // ---------------------------------------------------------------------------
-function BrowserSteps() {
-    const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
-    const isFirefox = ua.includes("Firefox");
-    const isSafari = ua.includes("Safari") && !ua.includes("Chrome");
-    const isEdge = ua.includes("Edg/");
 
-    const steps: { label: string; step: string }[] = isFirefox
-        ? [
-            { label: "Open", step: "Settings → Privacy & Security" },
-            { label: "Set", step: "Enhanced Tracking Protection → Standard" },
-            { label: "Reload", step: "Refresh this page" },
-        ]
-        : isSafari
-            ? [
-                { label: "Open", step: "Safari → Settings → Privacy" },
-                { label: "Uncheck", step: "\"Block all cookies\"" },
-                { label: "Reload", step: "Refresh this page" },
-            ]
-            : isEdge
-                ? [
-                    { label: "Open", step: "Settings → Cookies and site permissions" },
-                    { label: "Set", step: "Cookies → Allow" },
-                    { label: "Reload", step: "Refresh this page" },
-                ]
-                : [
-                    // Chrome / default
-                    { label: "Open", step: "Settings → Privacy and security → Cookies" },
-                    { label: "Set", step: "Allow all cookies" },
-                    { label: "Reload", step: "Refresh this page" },
-                ];
-
+function Steps({ items }: { items: { label: string; step: string }[] }) {
     return (
-        <ol style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 6 }}>
-            {steps.map((s, i) => (
+        <ol
+            style={{
+                margin: 0,
+                padding: 0,
+                listStyle: "none",
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
+            }}
+        >
+            {items.map((s, i) => (
                 <li
                     key={i}
                     style={{
@@ -373,4 +425,73 @@ function BrowserSteps() {
             ))}
         </ol>
     );
+}
+
+function CrossOriginSteps() {
+    const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+    const isFirefox = ua.includes("Firefox");
+    const isSafari = ua.includes("Safari") && !ua.includes("Chrome");
+    const isEdge = ua.includes("Edg/");
+
+    const steps = isFirefox
+        ? [
+            { label: "Open", step: "Settings → Privacy & Security" },
+            { label: "Under", step: "Enhanced Tracking Protection → choose Standard" },
+            { label: "Or add", step: "quellix.vercel.app as an exception" },
+            { label: "Reload", step: "this page" },
+        ]
+        : isSafari
+            ? [
+                { label: "Open", step: "Safari → Settings → Privacy" },
+                { label: "Uncheck", step: "\"Prevent cross-site tracking\"" },
+                { label: "Reload", step: "this page" },
+            ]
+            : isEdge
+                ? [
+                    { label: "Open", step: "Settings → Cookies and site permissions" },
+                    { label: "Under", step: "Cookies → turn off \"Block third-party cookies\"" },
+                    { label: "Reload", step: "this page" },
+                ]
+                : [
+                    // Chrome
+                    { label: "Open", step: "Settings → Privacy and security → Third-party cookies" },
+                    { label: "Select", step: "\"Allow third-party cookies\"" },
+                    { label: "Or add", step: "quellix.vercel.app to the allowed sites list" },
+                    { label: "Reload", step: "this page" },
+                ];
+
+    return <Steps items={steps} />;
+}
+
+function FirstPartySteps() {
+    const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+    const isFirefox = ua.includes("Firefox");
+    const isSafari = ua.includes("Safari") && !ua.includes("Chrome");
+    const isEdge = ua.includes("Edg/");
+
+    const steps = isFirefox
+        ? [
+            { label: "Open", step: "Settings → Privacy & Security" },
+            { label: "Set", step: "Enhanced Tracking Protection → Standard" },
+            { label: "Reload", step: "this page" },
+        ]
+        : isSafari
+            ? [
+                { label: "Open", step: "Safari → Settings → Privacy" },
+                { label: "Uncheck", step: "\"Block all cookies\"" },
+                { label: "Reload", step: "this page" },
+            ]
+            : isEdge
+                ? [
+                    { label: "Open", step: "Settings → Cookies and site permissions → Cookies" },
+                    { label: "Set", step: "Allow all cookies" },
+                    { label: "Reload", step: "this page" },
+                ]
+                : [
+                    { label: "Open", step: "Settings → Privacy and security → Cookies" },
+                    { label: "Set", step: "Allow all cookies" },
+                    { label: "Reload", step: "this page" },
+                ];
+
+    return <Steps items={steps} />;
 }
