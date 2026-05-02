@@ -2,7 +2,7 @@
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
 }
 
 datasource db {
@@ -31,9 +31,9 @@ model Developer {
   verificationTokens VerificationToken[]
   authEvents         AuthEvent[]
 
-  // Team: slots where this developer is the workspace owner
   notifications Notification[]
 
+  // Team: slots where this developer is the workspace owner
   teamMembersOwned TeamMember[] @relation("TeamOwner")
   // Team: slots where this developer is a collaborator on someone else's workspace
   teamMemberships  TeamMember[] @relation("TeamMember")
@@ -72,8 +72,8 @@ model ApiKey {
   keyHash    String     @unique @map("key_hash") // SHA-256 of full key — never stored plaintext
   keyPrefix  String     @map("key_prefix") // first ~16 chars for display (qlx_pub_xxxx)
   type       ApiKeyType @default(PUBLISHABLE)
-  // Fine-grained permission scopes — empty array means full access for the
-  // key type. Reserved for future use; add scope checks in resolveSdkKey.
+  // Fine-grained permission scopes — empty array means full access for the key type.
+  // Reserved for future use; add scope checks in resolveSdkKey.
   // Examples: ["users:read", "users:write", "sessions:revoke"]
   scopes     String[]   @default([])
   lastUsedAt DateTime?  @map("last_used_at")
@@ -101,6 +101,8 @@ model EndUser {
   id               String    @id @default(cuid())
   projectId        String    @map("project_id")
   email            String
+  // Staged email during a change-email flow. Cleared once confirmed.
+  pendingEmail     String?   @map("pending_email")
   passwordHash     String?   @map("password_hash")
   firstName        String?   @map("first_name")
   lastName         String?   @map("last_name")
@@ -230,6 +232,9 @@ enum TokenType {
   // existing account. The token field stores "<code>:<argon2hash>" so no
   // extra column is needed.
   ACCOUNT_LINK
+  // Issued during the email-change flow. The code is sent to the NEW address
+  // and confirms inbox ownership before swapping endUser.email.
+  EMAIL_CHANGE
 }
 
 // ============================================================

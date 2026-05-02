@@ -11,15 +11,22 @@ import {
   updateProject,
   deleteProject,
 } from "../controllers/projectController.ts";
+import {
+  getProjectSettings,
+  updateProjectSettings,
+} from "../controllers/projectSettingsController.ts";
 import { validateBody } from "../middlewares/validateBody.ts";
 import {
   createProjectSchema,
   updateProjectSchema,
 } from "../schema/projectValidationSchema.ts";
+import { updateProjectSettingsSchema } from "../schema/projectSettingsValidationSchema.ts";
 
 const router = express.Router();
 
 router.use(requireAuth);
+
+// ── Project CRUD ───────────────────────────────────────────────────────────
 
 // Any role can read
 router.get("/", resolveWorkspace, listProjects);
@@ -42,5 +49,19 @@ router.patch(
 
 // Only owner can delete
 router.delete("/:id", resolveWorkspace, requireOwner, deleteProject);
+
+// ── Project Settings ───────────────────────────────────────────────────────
+//
+// GET  /api/project/:id/settings — any role (reads SDK config)
+// PATCH /api/project/:id/settings — admin + owner only
+
+router.get("/:id/settings", resolveWorkspace, getProjectSettings);
+router.patch(
+  "/:id/settings",
+  resolveWorkspace,
+  requireWriteAccess,
+  validateBody(updateProjectSettingsSchema),
+  updateProjectSettings,
+);
 
 export default router;

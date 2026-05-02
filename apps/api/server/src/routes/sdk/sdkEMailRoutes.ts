@@ -10,6 +10,11 @@ import {
   requestPasswordReset,
   confirmPasswordReset,
 } from "../../controllers/sdk/sdkEmailController.ts";
+import {
+  changePassword,
+  requestEmailChange,
+  confirmEmailChange,
+} from "../../controllers/sdk/sdkAccountController.ts";
 
 const router = express.Router();
 
@@ -31,6 +36,25 @@ router.post(
   confirmEmailVerification,
 );
 
+// ── Email change (requires signed-in user) ────────────────────────────────
+// Step 1: request the change — sends a code to the NEW address
+router.post(
+  "/email/change",
+  resolveSdkKey,
+  requireKeyType("PUBLISHABLE"),
+  requireEndUserAuth,
+  requestEmailChange,
+);
+
+// Step 2: confirm the change — validates the code, swaps the email
+router.post(
+  "/email/change/confirm",
+  resolveSdkKey,
+  requireKeyType("PUBLISHABLE"),
+  requireEndUserAuth,
+  confirmEmailChange,
+);
+
 // ── Password reset (no auth — user is locked out) ─────────────────────────
 
 router.post(
@@ -45,6 +69,16 @@ router.post(
   resolveSdkKey,
   requireKeyType("PUBLISHABLE"),
   confirmPasswordReset,
+);
+
+// ── Password change (requires signed-in user) ─────────────────────────────
+
+router.post(
+  "/password/change",
+  resolveSdkKey,
+  requireKeyType("PUBLISHABLE"),
+  requireEndUserAuth,
+  changePassword,
 );
 
 export default router;

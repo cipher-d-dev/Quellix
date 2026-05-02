@@ -6,6 +6,7 @@ const FROM = `Quellix <${process.env.RESEND_SENDER_EMAIL ?? "noreply@quellix.dev
 const YEAR = new Date().getFullYear();
 const LOGO =
   "https://github.com/cipher-d-dev/Quellix/blob/9ce0c59b86a790c1d877b5224d185e3a19f134fd/apps/api/public/assets/favicon.png?raw=true";
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -461,6 +462,59 @@ export async function sendAccountLinkCode(
     subject: "Confirm adding password login to your Quellix account",
     html: accountLinkHtml(code),
     text: accountLinkText(code),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// EMAIL CHANGE
+// ---------------------------------------------------------------------------
+// Sent to the NEW email address to confirm ownership before the swap.
+
+function endUserEmailChangeHtml(code: string, appName?: string): string {
+  const app = appName ?? "your account";
+  return shell(
+    `
+    <h1 style="margin:0 0 10px;font-size:22px;font-weight:700;color:#09090b;letter-spacing:-0.4px;">Confirm your new email</h1>
+    <p style="margin:0 0 32px;font-size:15px;line-height:1.75;color:#52525b;">
+      You requested to change the email address on your <strong style="color:#09090b;">${app}</strong> account.
+      Enter the code below to confirm this is your inbox — your email will only be updated once you do.
+    </p>
+    ${codeBox(code)}
+    ${expiryBadge(10)}
+    ${divider()}
+    ${alertBox("<strong>Didn't request this?</strong> Someone may have access to your account. Your email hasn't changed yet — you can safely ignore this.")}
+    `,
+    "This was sent because an email change was requested on your account.",
+  );
+}
+
+function endUserEmailChangeText(code: string, appName?: string): string {
+  const app = appName ?? "your account";
+  return `Confirm your new email
+
+You requested to change the email address on your ${app} account.
+Enter the code below to confirm this is your inbox — your email will only be updated once you do.
+
+${code}
+
+Expires in 10 minutes.
+
+Didn't request this? Your email hasn't changed yet — you can safely ignore this.
+
+---
+© ${YEAR} Quellix, Inc.`;
+}
+
+export async function sendEmailChangeCode(
+  email: string,
+  code: string,
+  options?: { appName?: string },
+): Promise<{ success: boolean }> {
+  return sendEmail({
+    to: email,
+    subject: `Confirm your new email${options?.appName ? ` for ${options.appName}` : ""}`,
+    html: endUserEmailChangeHtml(code, options?.appName),
+    text: endUserEmailChangeText(code, options?.appName),
   });
 }
 

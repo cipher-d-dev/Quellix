@@ -7,7 +7,7 @@ import teamRoutes from "./routes/teamRoutes.ts";
 import dashboardRoutes from "./routes/dashboardRoutes.ts";
 import notificationRoutes from "./routes/notificationRoutes.ts";
 import sdkAuthRoutes from "./routes/sdk/sdkAuthRoutes.ts";
-import sdkEmailRoutes from "./routes/sdk/sdkEMailRoutes.ts";
+import sdkEmailRoutes from "./routes/sdk/sdkEmailRoutes.ts";
 import sdkUserRoutes from "./routes/sdk/sdkUserRoutes.ts";
 import { baseHTMLResponse } from "./constants/responseConstants.ts";
 import { config } from "dotenv";
