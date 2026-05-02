@@ -4,8 +4,13 @@ import crypto from "crypto";
 const resend = new Resend(process.env.RESEND_API_KEY);
 const FROM = `Quellix <${process.env.RESEND_SENDER_EMAIL ?? "noreply@quellix.dev"}>`;
 const YEAR = new Date().getFullYear();
-const LOGO =
-  "https://github.com/cipher-d-dev/Quellix/blob/9ce0c59b86a790c1d877b5224d185e3a19f134fd/apps/api/public/assets/favicon.png?raw=true";
+const LOGO = "https://quellix.vercel.app/assets/favicon-B7j1kBfy.ico";
+const BRAND = "#6d28d9";
+const BG = "#f5f7fb";
+const CARD = "#ffffff";
+const TEXT = "#0f172a";
+const MUTED = "#64748b";
+const BORDER = "#e2e8f0";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -62,45 +67,74 @@ function shell(body: string, footerNote: string): string {
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
-  <style>${FONT_IMPORT}</style>
-  <!--[if mso]><style>body,table,td{font-family:Arial,Helvetica,sans-serif!important;}</style><![endif]-->
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<style>
+  ${FONT_IMPORT}
+</style>
 </head>
-<body style="margin:0;padding:0;background-color:#f4f4f5;font-family:'Inter',ui-sans-serif,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;-webkit-font-smoothing:antialiased;">
-  <table role="presentation" width="100%" style="border-collapse:collapse;background-color:#f4f4f5;">
+
+<body style="margin:0;padding:0;background:${BG};font-family:Inter,system-ui,sans-serif;">
+  <table width="100%" role="presentation" style="padding:40px 16px;">
     <tr>
-      <td align="center" style="padding:48px 20px 64px;">
-        <table role="presentation" style="width:560px;max-width:100%;background:#ffffff;border-radius:16px;border:1px solid #e4e4e7;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06),0 4px 16px rgba(0,0,0,0.04);">
+      <td align="center">
+
+        <table role="presentation" width="560" style="
+          max-width:100%;
+          background:${CARD};
+          border-radius:18px;
+          overflow:hidden;
+          border:1px solid ${BORDER};
+        ">
+
+          <!-- HEADER -->
           <tr>
-            <td style="padding:28px 40px;background:#fafafa;border-bottom:1px solid #e4e4e7;">
-              <table role="presentation" style="border-collapse:collapse;">
+            <td style="
+              background:linear-gradient(135deg, #7c3aed, #4f46e5);
+              padding:28px 32px;
+              color:white;
+            ">
+              <table role="presentation" width="100%">
                 <tr>
-                  <td style="padding-right:10px;vertical-align:middle;">
-                    <div style="display:inline-block;width:38px;height:38px;border-radius:10px;line-height:0;">
-                      <img src="${LOGO}" width="38" height="38" alt="Quellix" style="display:block;border-radius:10px;" />
-                    </div>
-                  </td>
                   <td style="vertical-align:middle;">
-                    <span style="font-size:17px;font-weight:700;color:#09090b;letter-spacing:-0.3px;font-family: Inter;">Quellix</span>
+                    <img src="${LOGO}" width="36" height="36" style="border-radius:8px;" />
+                  </td>
+                  <td style="padding-left:10px;">
+                    <span style="font-weight:700;font-size:18px;letter-spacing:-0.3px;">
+                      Quellix
+                    </span>
                   </td>
                 </tr>
               </table>
             </td>
           </tr>
+
+          <!-- BODY -->
           <tr>
-            <td style="padding:44px 40px 40px;">
+            <td style="padding:40px 36px;">
               ${body}
             </td>
           </tr>
+
+          <!-- FOOTER -->
           <tr>
-            <td style="padding:24px 40px;background:#fafafa;border-top:1px solid #e4e4e7;text-align:center;">
-              <p style="margin:0 0 4px;font-size:12px;line-height:1.6;color:#a1a1aa;">${footerNote}</p>
-              <p style="margin:0;font-size:12px;color:#d4d4d8;">© ${YEAR} Quellix, Inc. All rights reserved.</p>
+            <td style="
+              background:#f8fafc;
+              padding:24px;
+              text-align:center;
+              border-top:1px solid ${BORDER};
+            ">
+              <p style="margin:0 0 6px;font-size:12px;color:${MUTED};">
+                ${footerNote}
+              </p>
+              <p style="margin:0;font-size:12px;color:#cbd5f5;">
+                © ${YEAR} Quellix
+              </p>
             </td>
           </tr>
+
         </table>
+
       </td>
     </tr>
   </table>
@@ -110,34 +144,68 @@ function shell(body: string, footerNote: string): string {
 
 function codeBox(code: string): string {
   return `
-<table role="presentation" style="margin:0 auto 28px;border-collapse:collapse;">
-  <tr>
-    <td style="background:#faf5ff;border:1.5px solid #c4b5fd;border-radius:14px;padding:26px 52px;text-align:center;">
-      <p style="margin:0 0 6px;font-size:11px;font-weight:600;color:#7c3aed;letter-spacing:2.5px;text-transform:uppercase;">Verification Code</p>
-      <p style="margin:0;font-size:34px;font-weight:700;color:#09090b;letter-spacing:8px;font-family:Inter;">${code}</p>
-    </td>
-  </tr>
-</table>`;
+  <div style="text-align:center;margin:32px 0;">
+    <div style="
+      display:inline-block;
+      padding:20px 32px;
+      border-radius:14px;
+      background:linear-gradient(135deg,#f5f3ff,#eef2ff);
+      border:1px solid #c7d2fe;
+    ">
+      <div style="
+        font-size:12px;
+        letter-spacing:2px;
+        text-transform:uppercase;
+        color:#6366f1;
+        margin-bottom:8px;
+        font-weight:600;
+      ">
+        Verification Code
+      </div>
+
+      <div style="
+        font-size:32px;
+        font-weight:700;
+        letter-spacing:10px;
+        color:${TEXT};
+      ">
+        ${code}
+      </div>
+    </div>
+  </div>`;
 }
 
 function alertBox(message: string): string {
   return `
-<table role="presentation" style="margin:28px auto 0;width:100%;border-collapse:collapse;">
-  <tr>
-    <td style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:14px 18px;">
-      <p style="margin:0;font-size:13px;line-height:1.65;color:#92400e;">${message}</p>
-    </td>
-  </tr>
-</table>`;
+  <div style="
+    margin-top:28px;
+    padding:16px 18px;
+    border-radius:10px;
+    background:#fff7ed;
+    border:1px solid #fdba74;
+    color:#9a3412;
+    font-size:13px;
+    line-height:1.6;
+  ">
+    ${message}
+  </div>`;
 }
 
 function expiryBadge(minutes: number): string {
   return `
-<p style="margin:0 0 28px;text-align:center;">
-  <span style="display:inline-block;background:#f4f4f5;border:1px solid #e4e4e7;border-radius:99px;padding:5px 14px;font-size:13px;font-weight:500;color:#52525b;">
-    Expires in <strong style="color:#09090b;">${minutes} minutes</strong>
-  </span>
-</p>`;
+  <div style="text-align:center;margin-top:8px;margin-bottom:20px;">
+    <span style="
+      display:inline-block;
+      padding:6px 14px;
+      font-size:13px;
+      border-radius:999px;
+      background:#eef2ff;
+      color:#4338ca;
+      font-weight:500;
+    ">
+      Expires in ${minutes} minutes
+    </span>
+  </div>`;
 }
 
 function divider(): string {
@@ -146,13 +214,21 @@ function divider(): string {
 
 function ctaButton(label: string, url: string): string {
   return `
-<table role="presentation" style="margin:32px auto;border-collapse:collapse;">
-  <tr>
-    <td style="background:#6d28d9;border-radius:10px;text-align:center;">
-      <a href="${url}" style="display:inline-block;padding:14px 32px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;letter-spacing:-0.2px;">${label}</a>
-    </td>
-  </tr>
-</table>`;
+  <div style="text-align:center;margin:32px 0;">
+    <a href="${url}" style="
+      display:inline-block;
+      background:linear-gradient(135deg,#7c3aed,#4f46e5);
+      color:white;
+      padding:14px 28px;
+      border-radius:10px;
+      font-weight:600;
+      font-size:14px;
+      text-decoration:none;
+      box-shadow:0 6px 18px rgba(79,70,229,0.25);
+    ">
+      ${label}
+    </a>
+  </div>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -162,8 +238,19 @@ function ctaButton(label: string, url: string): string {
 function developerVerificationHtml(code: string): string {
   return shell(
     `
-    <h1 style="margin:0 0 10px;font-size:22px;font-weight:700;color:#09090b;letter-spacing:-0.4px;">Confirm your email</h1>
-    <p style="margin:0 0 32px;font-size:15px;line-height:1.75;color:#52525b;">
+    <h1 style="
+  margin:0 0 12px;
+  font-size:24px;
+  font-weight:700;
+  color:#0f172a;
+  letter-spacing:-0.4px;
+">Confirm your email</h1>
+    <p style="
+  margin:0 0 28px;
+  font-size:15px;
+  line-height:1.75;
+  color:#475569;
+">
       One step before you can start building. Paste this code into the verification screen and you're in.
     </p>
     ${codeBox(code)}
@@ -194,8 +281,19 @@ function endUserVerificationHtml(code: string, appName?: string): string {
   const app = appName ?? "the app";
   return shell(
     `
-    <h1 style="margin:0 0 10px;font-size:22px;font-weight:700;color:#09090b;letter-spacing:-0.4px;">You're almost in 👋</h1>
-    <p style="margin:0 0 32px;font-size:15px;line-height:1.75;color:#52525b;">
+    <h1 style="
+  margin:0 0 12px;
+  font-size:24px;
+  font-weight:700;
+  color:#0f172a;
+  letter-spacing:-0.4px;
+">You're almost in 👋</h1>
+    <p style="
+  margin:0 0 28px;
+  font-size:15px;
+  line-height:1.75;
+  color:#475569;
+">
       Thanks for signing up. Just enter the code below to verify your email and you'll be all set to use <strong style="color:#09090b;">${app}</strong>.
     </p>
     ${codeBox(code)}
@@ -251,8 +349,19 @@ export async function sendVerificationCode(
 function developerPasswordResetHtml(code: string): string {
   return shell(
     `
-    <h1 style="margin:0 0 10px;font-size:22px;font-weight:700;color:#09090b;letter-spacing:-0.4px;">Reset your password</h1>
-    <p style="margin:0 0 32px;font-size:15px;line-height:1.75;color:#52525b;">
+    <h1 style="
+  margin:0 0 12px;
+  font-size:24px;
+  font-weight:700;
+  color:#0f172a;
+  letter-spacing:-0.4px;
+">Reset your password</h1>
+    <p style="
+  margin:0 0 28px;
+  font-size:15px;
+  line-height:1.75;
+  color:#475569;
+">
       Use the code below to set a new password. It's only valid for 10 minutes, so don't sit on it too long.
     </p>
     ${codeBox(code)}
@@ -281,8 +390,19 @@ function endUserPasswordResetHtml(code: string, appName?: string): string {
   const app = appName ?? "your account";
   return shell(
     `
-    <h1 style="margin:0 0 10px;font-size:22px;font-weight:700;color:#09090b;letter-spacing:-0.4px;">Forgot your password?</h1>
-    <p style="margin:0 0 32px;font-size:15px;line-height:1.75;color:#52525b;">
+    <h1 style="
+  margin:0 0 12px;
+  font-size:24px;
+  font-weight:700;
+  color:#0f172a;
+  letter-spacing:-0.4px;
+">Forgot your password?</h1>
+    <p style="
+  margin:0 0 28px;
+  font-size:15px;
+  line-height:1.75;
+  color:#475569;
+">
       No worries — it happens to everyone. Enter the code below to reset your password for <strong style="color:#09090b;">${app}</strong>.
     </p>
     ${codeBox(code)}
@@ -336,8 +456,19 @@ export async function sendPasswordResetCode(
 function developer2FAHtml(code: string): string {
   return shell(
     `
-    <h1 style="margin:0 0 10px;font-size:22px;font-weight:700;color:#09090b;letter-spacing:-0.4px;">Your login code</h1>
-    <p style="margin:0 0 32px;font-size:15px;line-height:1.75;color:#52525b;">
+    <h1 style="
+  margin:0 0 12px;
+  font-size:24px;
+  font-weight:700;
+  color:#0f172a;
+  letter-spacing:-0.4px;
+">Your login code</h1>
+    <p style="
+  margin:0 0 28px;
+  font-size:15px;
+  line-height:1.75;
+  color:#475569;
+">
       Here's your two-factor authentication code. It expires in 5 minutes — enter it quickly.
     </p>
     ${codeBox(code)}
@@ -366,8 +497,19 @@ function endUser2FAHtml(code: string, appName?: string): string {
   const app = appName ?? "your account";
   return shell(
     `
-    <h1 style="margin:0 0 10px;font-size:22px;font-weight:700;color:#09090b;letter-spacing:-0.4px;">Finishing your sign-in</h1>
-    <p style="margin:0 0 32px;font-size:15px;line-height:1.75;color:#52525b;">
+    <h1 style="
+  margin:0 0 12px;
+  font-size:24px;
+  font-weight:700;
+  color:#0f172a;
+  letter-spacing:-0.4px;
+">Finishing your sign-in</h1>
+    <p style="
+  margin:0 0 28px;
+  font-size:15px;
+  line-height:1.75;
+  color:#475569;
+">
       Almost there. Enter this code to complete signing in to <strong style="color:#09090b;">${app}</strong>.
     </p>
     ${codeBox(code)}
@@ -423,8 +565,19 @@ export async function send2FACode(
 function accountLinkHtml(code: string): string {
   return shell(
     `
-    <h1 style="margin:0 0 10px;font-size:22px;font-weight:700;color:#09090b;letter-spacing:-0.4px;">Add password login to your account</h1>
-    <p style="margin:0 0 32px;font-size:15px;line-height:1.75;color:#52525b;">
+    <h1 style="
+  margin:0 0 12px;
+  font-size:24px;
+  font-weight:700;
+  color:#0f172a;
+  letter-spacing:-0.4px;
+">Add password login to your account</h1>
+    <p style="
+  margin:0 0 28px;
+  font-size:15px;
+  line-height:1.75;
+  color:#475569;
+">
       We received a request to add password-based login to your existing Quellix account.
       Enter the code below to confirm — once done, you can sign in with either method.
     </p>
@@ -474,8 +627,19 @@ function endUserEmailChangeHtml(code: string, appName?: string): string {
   const app = appName ?? "your account";
   return shell(
     `
-    <h1 style="margin:0 0 10px;font-size:22px;font-weight:700;color:#09090b;letter-spacing:-0.4px;">Confirm your new email</h1>
-    <p style="margin:0 0 32px;font-size:15px;line-height:1.75;color:#52525b;">
+    <h1 style="
+  margin:0 0 12px;
+  font-size:24px;
+  font-weight:700;
+  color:#0f172a;
+  letter-spacing:-0.4px;
+">Confirm your new email</h1>
+    <p style="
+  margin:0 0 28px;
+  font-size:15px;
+  line-height:1.75;
+  color:#475569;
+">
       You requested to change the email address on your <strong style="color:#09090b;">${app}</strong> account.
       Enter the code below to confirm this is your inbox — your email will only be updated once you do.
     </p>
@@ -529,8 +693,19 @@ function teamInviteHtml(
 ): string {
   return shell(
     `
-    <h1 style="margin:0 0 10px;font-size:22px;font-weight:700;color:#09090b;letter-spacing:-0.4px;">You've been invited to join a team</h1>
-    <p style="margin:0 0 32px;font-size:15px;line-height:1.75;color:#52525b;">
+    <h1 style="
+  margin:0 0 12px;
+  font-size:24px;
+  font-weight:700;
+  color:#0f172a;
+  letter-spacing:-0.4px;
+">You've been invited to join a team</h1>
+    <p style="
+  margin:0 0 28px;
+  font-size:15px;
+  line-height:1.75;
+  color:#475569;
+">
       <strong style="color:#09090b;">${inviterName}</strong> has invited you to join their Quellix workspace
       as a <strong style="color:#09090b;">${role}</strong>. Click below to accept.
     </p>
