@@ -11,6 +11,6 @@ export default defineConfig({
 
   datasource: {
     // This is where the CLI (migrate, db push) gets its connection URL
-    url: env("DATABASE_URL"),
+    url: env("DIRECT_URL"),
   },
 });
