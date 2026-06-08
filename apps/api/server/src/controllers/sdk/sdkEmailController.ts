@@ -7,6 +7,8 @@ import {
   sendPasswordResetCode,
 } from "../../utils/mailer.ts";
 import { logAuthEvent } from "../../utils/logAuthEvent.ts";
+import { sendSuccess, sendError, handleError } from "../../utils/apiResponse.ts";
+import { SdkErrorCode } from "../../constants/errorCodes.ts";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -50,10 +52,7 @@ export async function sendEmailVerification(req: Request, res: Response) {
 
     // Already verified — no-op
     if (endUser.emailVerified) {
-      return res.status(200).json({
-        success: true,
-        message: "Email is already verified.",
-      });
+      return sendSuccess(res, {});
     }
 
     // Delete any existing pending verification tokens for this user
@@ -78,15 +77,10 @@ export async function sendEmailVerification(req: Request, res: Response) {
       appName: appName(req),
     }).catch((e) => console.error("[sdk/email/verify/send] mailer error:", e));
 
-    return res.status(200).json({
-      success: true,
-      message: `Verification code sent to ${endUser.email}.`,
-    });
+    return sendSuccess(res, {});
   } catch (error) {
     console.error("[sdk/email/verify/send]", error);
-    return res
-      .status(500)
-      .json({ success: false, error: "Something went wrong." });
+    return handleError(res, error);
   }
 }
 
@@ -104,10 +98,7 @@ export async function confirmEmailVerification(req: Request, res: Response) {
     const { code } = req.body;
 
     if (!code) {
-      return res.status(400).json({
-        success: false,
-        error: "code is required.",
-      });
+      return sendError(res, 400, "code is required.", SdkErrorCode.BAD_REQUEST);
     }
 
     const record = await prisma.verificationToken.findFirst({
@@ -119,20 +110,13 @@ export async function confirmEmailVerification(req: Request, res: Response) {
     });
 
     if (!record) {
-      return res.status(400).json({
-        success: false,
-        error: "Invalid verification code.",
-      });
+      return sendError(res, 400, "Invalid verification code.", SdkErrorCode.INVALID_CODE);
     }
 
     if (record.expiresAt < new Date()) {
       // Clean up the expired token
       await prisma.verificationToken.delete({ where: { id: record.id } });
-      return res.status(400).json({
-        success: false,
-        error: "Verification code has expired. Request a new one.",
-        code: "CODE_EXPIRED",
-      });
+      return sendError(res, 400, "Verification code has expired. Request a new one.", SdkErrorCode.CODE_EXPIRED);
     }
 
     // Mark verified + delete token in a transaction
@@ -151,15 +135,10 @@ export async function confirmEmailVerification(req: Request, res: Response) {
       ...clientMeta(req),
     });
 
-    return res.status(200).json({
-      success: true,
-      message: "Email verified.",
-    });
+    return sendSuccess(res, {});
   } catch (error) {
     console.error("[sdk/email/verify/confirm]", error);
-    return res
-      .status(500)
-      .json({ success: false, error: "Something went wrong." });
+    return handleError(res, error);
   }
 }
 
@@ -181,10 +160,7 @@ export async function requestPasswordReset(req: Request, res: Response) {
     const { email } = req.body;
 
     if (!email) {
-      return res.status(400).json({
-        success: false,
-        error: "email is required.",
-      });
+      return sendError(res, 400, "email is required.", SdkErrorCode.BAD_REQUEST);
     }
 
     const normalizedEmail = email.trim().toLowerCase();
@@ -198,20 +174,12 @@ export async function requestPasswordReset(req: Request, res: Response) {
     // Always respond the same way — don't reveal whether the user exists
     if (!endUser || !endUser.passwordHash) {
       // No account or OAuth-only account — silent success
-      return res.status(200).json({
-        success: true,
-        message:
-          "If an account with that email exists, a reset code has been sent.",
-      });
+      return sendSuccess(res, {});
     }
 
     if (endUser.banned) {
       // Banned users also get the silent success — no information leakage
-      return res.status(200).json({
-        success: true,
-        message:
-          "If an account with that email exists, a reset code has been sent.",
-      });
+      return sendSuccess(res, {});
     }
 
     // Rate-limit: one reset request per user per 60 seconds
@@ -229,11 +197,7 @@ export async function requestPasswordReset(req: Request, res: Response) {
 
     if (recent) {
       // Still silent 200 — don't leak that the user exists
-      return res.status(200).json({
-        success: true,
-        message:
-          "If an account with that email exists, a reset code has been sent.",
-      });
+      return sendSuccess(res, {});
     }
 
     // Invalidate any previous reset tokens
@@ -264,16 +228,10 @@ export async function requestPasswordReset(req: Request, res: Response) {
       ...clientMeta(req),
     });
 
-    return res.status(200).json({
-      success: true,
-      message:
-        "If an account with that email exists, a reset code has been sent.",
-    });
+    return sendSuccess(res, {});
   } catch (error) {
     console.error("[sdk/password/reset]", error);
-    return res
-      .status(500)
-      .json({ success: false, error: "Something went wrong." });
+    return handleError(res, error);
   }
 }
 
@@ -296,10 +254,7 @@ export async function confirmPasswordReset(req: Request, res: Response) {
     const { email, code, newPassword } = req.body;
 
     if (!email || !code || !newPassword) {
-      return res.status(400).json({
-        success: false,
-        error: "email, code, and newPassword are required.",
-      });
+      return sendError(res, 400, "email, code, and newPassword are required.", SdkErrorCode.BAD_REQUEST);
     }
 
     const normalizedEmail = email.trim().toLowerCase();
@@ -311,10 +266,7 @@ export async function confirmPasswordReset(req: Request, res: Response) {
     });
 
     if (!endUser) {
-      return res.status(400).json({
-        success: false,
-        error: "Invalid or expired reset code.",
-      });
+      return sendError(res, 400, "Invalid or expired reset code.", SdkErrorCode.INVALID_CODE);
     }
 
     const record = await prisma.verificationToken.findFirst({
@@ -326,47 +278,28 @@ export async function confirmPasswordReset(req: Request, res: Response) {
     });
 
     if (!record) {
-      return res.status(400).json({
-        success: false,
-        error: "Invalid or expired reset code.",
-      });
+      return sendError(res, 400, "Invalid or expired reset code.", SdkErrorCode.INVALID_CODE);
     }
 
     if (record.expiresAt < new Date()) {
       await prisma.verificationToken.delete({ where: { id: record.id } });
-      return res.status(400).json({
-        success: false,
-        error: "Reset code has expired. Request a new one.",
-        code: "CODE_EXPIRED",
-      });
+      return sendError(res, 400, "Reset code has expired. Request a new one.", SdkErrorCode.CODE_EXPIRED);
     }
 
     // ── Password policy ────────────────────────────────────────────────────
     if (settings) {
       const min = settings.passwordMinLength;
       if (newPassword.length < min) {
-        return res.status(400).json({
-          success: false,
-          error: `Password must be at least ${min} characters.`,
-        });
+        return sendError(res, 400, `Password must be at least ${min} characters.`, SdkErrorCode.WEAK_PASSWORD);
       }
       if (settings.passwordRequireUppercase && !/[A-Z]/.test(newPassword)) {
-        return res.status(400).json({
-          success: false,
-          error: "Password must contain at least one uppercase letter.",
-        });
+        return sendError(res, 400, "Password must contain at least one uppercase letter.", SdkErrorCode.WEAK_PASSWORD);
       }
       if (settings.passwordRequireNumber && !/\d/.test(newPassword)) {
-        return res.status(400).json({
-          success: false,
-          error: "Password must contain at least one number.",
-        });
+        return sendError(res, 400, "Password must contain at least one number.", SdkErrorCode.WEAK_PASSWORD);
       }
       if (settings.passwordRequireSymbol && !/[^A-Za-z0-9]/.test(newPassword)) {
-        return res.status(400).json({
-          success: false,
-          error: "Password must contain at least one special character.",
-        });
+        return sendError(res, 400, "Password must contain at least one special character.", SdkErrorCode.WEAK_PASSWORD);
       }
     }
 
@@ -390,14 +323,9 @@ export async function confirmPasswordReset(req: Request, res: Response) {
       ...clientMeta(req),
     });
 
-    return res.status(200).json({
-      success: true,
-      message: "Password updated. Please sign in again.",
-    });
+    return sendSuccess(res, {});
   } catch (error) {
     console.error("[sdk/password/reset/confirm]", error);
-    return res
-      .status(500)
-      .json({ success: false, error: "Something went wrong." });
+    return handleError(res, error);
   }
 }

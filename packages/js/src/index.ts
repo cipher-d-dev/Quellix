@@ -1,19 +1,21 @@
+// ============================================================================
+// Exports
+// ============================================================================
+
 // Provider
-export { QuelixProvider } from "./context.js";
+export { QuelixProvider, useQuellix } from "./context.js";
 
-// Tier 1 — Hooks
-export { useAuth } from "./hooks/useAuth.js";
-export { useUser } from "./hooks/useUser.js";
-export { useSignIn } from "./hooks/useSignIn.js";
-export { useSignUp } from "./hooks/useSignUp.js";
-export { useSignOut } from "./hooks/useSignOut.js";
-export { useEmailVerification } from "./hooks/useEmailVerification.js";
-export { usePasswordReset } from "./hooks/usePasswordReset.js";
+// HTTP Client
+export { QuelixClient } from "./client.js";
 
-// Tier 2 — Headless components
-export { SignIn } from "./components/SignIn/index.js";
-export { SignUp } from "./components/SignUp/index.js";
-export { PasswordReset } from "./components/PasswordReset/index.js";
+// Hooks
+export { useAuth } from "./useAuth.js";
+export { useUser } from "./useUser.js";
+export { useSignIn } from "./useSignIn.js";
+export { useSignUp } from "./useSignUp.js";
+export { useSignOut } from "./useSignOut.js";
+export { useEmailVerification } from "./useEmailVerification.js";
+export { usePasswordReset } from "./usePasswordReset.js";
 
 // Re-export types consumers need
 export type {
@@ -23,8 +25,19 @@ export type {
   AuthState,
   AuthStateListener,
   QuelixResult,
-  RegisterInput,
+  RegisterResponse,
   SignInInput,
+  SignUpInput,
   UpdateUserInput,
   StorageAdapter,
-} from "@quellix/js";
+  UseAuthReturn,
+  UseUserReturn,
+  UseSignInReturn,
+  UseSignUpReturn,
+  UseSignOutReturn,
+  UseEmailVerificationReturn,
+  UsePasswordResetReturn,
+  SdkErrorCode,
+  SdkError,
+} from "@quellix/types";
+

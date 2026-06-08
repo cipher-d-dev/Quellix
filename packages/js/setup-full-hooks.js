@@ -1,0 +1,258 @@
+#!/usr/bin/env node
+/**
+ * Setup script for creating Quellix React hooks
+ * 
+ * This script creates the hooks directory and files.
+ * Run from the repository root with: node setup-hooks.js
+ */
+
+const fs = require('fs');
+const path = require('path');
+
+// Define the hooks directory
+const hooksDir = path.join(__dirname, 'packages', 'js', 'src', 'hooks');
+
+// Create directory if it doesn't exist
+if (!fs.existsSync(hooksDir)) {
+  fs.mkdirSync(hooksDir, { recursive: true });
+  console.log(`✓ Created directory: ${hooksDir}`);
+} else {
+  console.log(`✓ Directory already exists: ${hooksDir}`);
+}
+
+// Hook file definitions
+const hooks = [
+  {
+    name: 'useAuth.ts',
+    content: `import { useState, useCallback } from "react";
+import type {
+  UseAuthReturn,
+  SignInInput,
+  SignUpInput,
+} from "@quellix/types";
+import { useQuellix } from "../context";
+
+export function useAuth(): UseAuthReturn {
+  const { client, auth, setAuth } = useQuellix();
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const signIn = useCallback(
+    async (input: SignInInput) => {
+      try {
+        setAuth((prev) => ({
+          ...prev,
+          isLoading: true,
+          error: null,
+        }));
+
+        const response = await client.signIn(input);
+
+        if (!response.success || !response.data) {
+          throw new Error(response.error || "Sign in failed");
+        }
+
+        const { accessToken, refreshToken, user } = response.data;
+
+        // Store tokens
+        const storage = (window as any).__quellix_storage || localStorage;
+        await storage.setItem("qlx_access_token", accessToken);
+        await storage.setItem("qlx_refresh_token", refreshToken);
+
+        // Update client tokens
+        client.setTokens(accessToken, refreshToken);
+
+        // Update auth state
+        setAuth({
+          isAuthenticated: true,
+          isLoading: false,
+          user,
+          session: {
+            accessToken,
+            refreshToken,
+            expiresAt: new Date(Date.now() + 3600000).toISOString(),
+          },
+          error: null,
+        });
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error";
+        setAuth((prev) => ({
+          ...prev,
+          isLoading: false,
+          error: errorMessage,
+        }));
+        throw error;
+      }
+    },
+    [client, setAuth]
+  );
+
+  const signUp = useCallback(
+    async (input: SignUpInput) => {
+      try {
+        setAuth((prev) => ({
+          ...prev,
+          isLoading: true,
+          error: null,
+        }));
+
+        const response = await client.register(input);
+
+        if (!response.success || !response.data) {
+          throw new Error(response.error || "Sign up failed");
+        }
+
+        const { accessToken, refreshToken, user } = response.data;
+
+        // Store tokens
+        const storage = (window as any).__quellix_storage || localStorage;
+        await storage.setItem("qlx_access_token", accessToken);
+        await storage.setItem("qlx_refresh_token", refreshToken);
+
+        // Update client tokens
+        client.setTokens(accessToken, refreshToken);
+
+        // Update auth state
+        setAuth({
+          isAuthenticated: true,
+          isLoading: false,
+          user,
+          session: {
+            accessToken,
+            refreshToken,
+            expiresAt: new Date(Date.now() + 3600000).toISOString(),
+          },
+          error: null,
+        });
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error";
+        setAuth((prev) => ({
+          ...prev,
+          isLoading: false,
+          error: errorMessage,
+        }));
+        throw error;
+      }
+    },
+    [client, setAuth]
+  );
+
+  const signOut = useCallback(async () => {
+    try {
+      setAuth((prev) => ({
+        ...prev,
+        isLoading: true,
+        error: null,
+      }));
+
+      const refreshToken = client.getRefreshToken();
+
+      try {
+        await client.signOut(refreshToken || undefined);
+      } catch (error) {
+        console.error("[Quellix] Sign out API error:", error);
+      }
+
+      // Clear storage
+      const storage = (window as any).__quellix_storage || localStorage;
+      await storage.removeItem("qlx_access_token");
+      await storage.removeItem("qlx_refresh_token");
+
+      // Clear client tokens
+      client.clearTokens();
+
+      // Update auth state
+      setAuth({
+        isAuthenticated: false,
+        isLoading: false,
+        user: null,
+        session: null,
+        error: null,
+      });
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      setAuth((prev) => ({
+        ...prev,
+        isLoading: false,
+        error: errorMessage,
+      }));
+      throw error;
+    }
+  }, [client, setAuth]);
+
+  const refresh = useCallback(async () => {
+    try {
+      setIsRefreshing(true);
+
+      const refreshToken = client.getRefreshToken();
+      if (!refreshToken) {
+        throw new Error("No refresh token available");
+      }
+
+      const response = await client.refresh(refreshToken);
+
+      if (!response.success || !response.data) {
+        throw new Error(response.error || "Refresh failed");
+      }
+
+      const { accessToken, refreshToken: newRefreshToken } = response.data;
+
+      // Store tokens
+      const storage = (window as any).__quellix_storage || localStorage;
+      await storage.setItem("qlx_access_token", accessToken);
+      await storage.setItem("qlx_refresh_token", newRefreshToken);
+
+      // Update client tokens
+      client.setTokens(accessToken, newRefreshToken);
+
+      // Update auth state
+      setAuth((prev) => ({
+        ...prev,
+        session: prev.session
+          ? {
+              ...prev.session,
+              accessToken,
+              refreshToken: newRefreshToken,
+            }
+          : null,
+        error: null,
+      }));
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      setAuth((prev) => ({
+        ...prev,
+        error: errorMessage,
+      }));
+      throw error;
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [client, setAuth]);
+
+  return {
+    isAuthenticated: auth.isAuthenticated,
+    isLoading: auth.isLoading || isRefreshing,
+    user: auth.user,
+    session: auth.session,
+    error: auth.error,
+    signIn,
+    signUp,
+    signOut,
+    refresh,
+  };
+}
+`
+  }
+];
+
+// Create all hook files
+hooks.forEach((hook) => {
+  const filePath = path.join(hooksDir, hook.name);
+  fs.writeFileSync(filePath, hook.content, 'utf-8');
+  console.log(`✓ Created ${hook.name}`);
+});
+
+console.log(`\n✓ All hooks created successfully in ${hooksDir}`);

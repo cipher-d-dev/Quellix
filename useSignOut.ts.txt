@@ -1,0 +1,25 @@
+import { useState, useCallback } from "react";
+import type { UseSignOutReturn } from "@quellix/types";
+import { useAuth } from "./useAuth";
+
+export function useSignOut(): UseSignOutReturn {
+  const auth = useAuth();
+  const [isLoading, setIsLoading] = useState(false);
+
+  const signOut = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      await auth.signOut();
+    } catch (error) {
+      console.error("[Quellix] Sign out error:", error);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [auth]);
+
+  return {
+    signOut,
+    isLoading: isLoading || auth.isLoading,
+  };
+}

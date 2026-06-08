@@ -9,6 +9,12 @@ import {
   isEndUserPayload,
 } from "../../utils/generateToken.ts";
 import { logAuthEvent } from "../../utils/logAuthEvent.ts";
+import {
+  sendSuccess,
+  sendError,
+  handleError,
+} from "../../utils/apiResponse.ts";
+import { SdkErrorCode } from "../../constants/errorCodes.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -71,19 +77,23 @@ export async function register(req: Request, res: Response) {
 
     // ── Check signups allowed ──────────────────────────────────────────────
     if (settings && !settings.allowSignups) {
-      return res.status(403).json({
-        success: false,
-        error: "New registrations are currently disabled for this application.",
-      });
+      return sendError(
+        res,
+        "New registrations are currently disabled for this application.",
+        SdkErrorCode.FORBIDDEN,
+        403
+      );
     }
 
     const { email, password, firstName, lastName } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({
-        success: false,
-        error: "email and password are required.",
-      });
+      return sendError(
+        res,
+        "email and password are required.",
+        SdkErrorCode.BAD_REQUEST,
+        400
+      );
     }
 
     const normalizedEmail = email.trim().toLowerCase();
@@ -92,28 +102,36 @@ export async function register(req: Request, res: Response) {
     if (settings) {
       const min = settings.passwordMinLength;
       if (password.length < min) {
-        return res.status(400).json({
-          success: false,
-          error: `Password must be at least ${min} characters.`,
-        });
+        return sendError(
+          res,
+          `Password must be at least ${min} characters.`,
+          SdkErrorCode.WEAK_PASSWORD,
+          400
+        );
       }
       if (settings.passwordRequireUppercase && !/[A-Z]/.test(password)) {
-        return res.status(400).json({
-          success: false,
-          error: "Password must contain at least one uppercase letter.",
-        });
+        return sendError(
+          res,
+          "Password must contain at least one uppercase letter.",
+          SdkErrorCode.WEAK_PASSWORD,
+          400
+        );
       }
       if (settings.passwordRequireNumber && !/\d/.test(password)) {
-        return res.status(400).json({
-          success: false,
-          error: "Password must contain at least one number.",
-        });
+        return sendError(
+          res,
+          "Password must contain at least one number.",
+          SdkErrorCode.WEAK_PASSWORD,
+          400
+        );
       }
       if (settings.passwordRequireSymbol && !/[^A-Za-z0-9]/.test(password)) {
-        return res.status(400).json({
-          success: false,
-          error: "Password must contain at least one special character.",
-        });
+        return sendError(
+          res,
+          "Password must contain at least one special character.",
+          SdkErrorCode.WEAK_PASSWORD,
+          400
+        );
       }
     }
 
@@ -124,10 +142,12 @@ export async function register(req: Request, res: Response) {
       },
     });
     if (existing) {
-      return res.status(409).json({
-        success: false,
-        error: "An account with this email already exists.",
-      });
+      return sendError(
+        res,
+        "An account with this email already exists.",
+        SdkErrorCode.EMAIL_ALREADY_EXISTS,
+        409
+      );
     }
 
     // ── Hash password + create user ────────────────────────────────────────
@@ -153,7 +173,7 @@ export async function register(req: Request, res: Response) {
       {
         sessionDurationDays: settings?.sessionDurationDays,
         jwtDurationSeconds: settings?.jwtDurationSeconds,
-      },
+      }
     );
 
     logAuthEvent({
@@ -163,21 +183,18 @@ export async function register(req: Request, res: Response) {
       ...meta,
     });
 
-    return res.status(201).json({
-      success: true,
-      data: {
+    return sendSuccess(
+      res,
+      {
         user: safeUser(endUser),
         accessToken,
         refreshToken,
-        // Let the SDK know whether it needs to prompt for email verification
         emailVerificationRequired: settings?.requireEmailVerification ?? false,
       },
-    });
+      201
+    );
   } catch (error) {
-    console.error("[sdk/register]", error);
-    return res
-      .status(500)
-      .json({ success: false, error: "Something went wrong." });
+    return handleError(res, error, "[sdk/register]");
   }
 }
 
@@ -197,10 +214,12 @@ export async function signin(req: Request, res: Response) {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({
-        success: false,
-        error: "email and password are required.",
-      });
+      return sendError(
+        res,
+        "email and password are required.",
+        SdkErrorCode.BAD_REQUEST,
+        400
+      );
     }
 
     const normalizedEmail = email.trim().toLowerCase();
@@ -229,27 +248,31 @@ export async function signin(req: Request, res: Response) {
           reason: !endUser ? "user_not_found" : "wrong_password",
         },
       });
-      return res.status(401).json({
-        success: false,
-        error: "Invalid email or password.",
-      });
+      return sendError(
+        res,
+        "Invalid email or password.",
+        SdkErrorCode.INVALID_CREDENTIALS,
+        401
+      );
     }
 
     if (endUser.banned) {
-      return res.status(403).json({
-        success: false,
-        error:
-          "Your account has been suspended. Contact the application owner.",
-      });
+      return sendError(
+        res,
+        "Your account has been suspended. Contact the application owner.",
+        SdkErrorCode.USER_BANNED,
+        403
+      );
     }
 
     // ── Email verification gate ────────────────────────────────────────────
     if (settings?.requireEmailVerification && !endUser.emailVerified) {
-      return res.status(403).json({
-        success: false,
-        error: "Please verify your email address before signing in.",
-        code: "EMAIL_NOT_VERIFIED",
-      });
+      return sendError(
+        res,
+        "Please verify your email address before signing in.",
+        SdkErrorCode.EMAIL_NOT_VERIFIED,
+        403
+      );
     }
 
     // ── Max sessions enforcement ───────────────────────────────────────────
@@ -277,7 +300,7 @@ export async function signin(req: Request, res: Response) {
       {
         sessionDurationDays: settings?.sessionDurationDays,
         jwtDurationSeconds: settings?.jwtDurationSeconds,
-      },
+      }
     );
 
     // Update lastSignInAt
@@ -292,19 +315,13 @@ export async function signin(req: Request, res: Response) {
       ...meta,
     });
 
-    return res.status(200).json({
-      success: true,
-      data: {
-        user: safeUser(endUser),
-        accessToken,
-        refreshToken,
-      },
+    return sendSuccess(res, {
+      user: safeUser(endUser),
+      accessToken,
+      refreshToken,
     });
   } catch (error) {
-    console.error("[sdk/signin]", error);
-    return res
-      .status(500)
-      .json({ success: false, error: "Something went wrong." });
+    return handleError(res, error, "[sdk/signin]");
   }
 }
 
@@ -331,12 +348,9 @@ export async function signout(req: Request, res: Response) {
       ...clientMeta(req),
     });
 
-    return res.status(200).json({ success: true, message: "Signed out." });
+    return sendSuccess(res, {});
   } catch (error) {
-    console.error("[sdk/signout]", error);
-    return res
-      .status(500)
-      .json({ success: false, error: "Something went wrong." });
+    return handleError(res, error, "[sdk/signout]");
   }
 }
 
@@ -356,34 +370,31 @@ export async function refresh(req: Request, res: Response) {
     const { refreshToken } = req.body;
 
     if (!refreshToken) {
-      return res.status(400).json({
-        success: false,
-        error: "refreshToken is required.",
-      });
+      return sendError(
+        res,
+        "refreshToken is required.",
+        SdkErrorCode.BAD_REQUEST,
+        400
+      );
     }
 
     const result = await rotateTokens(refreshToken, res, clientMeta(req));
 
     if (!result) {
-      return res.status(401).json({
-        success: false,
-        error: "Refresh token is invalid or has expired. Please sign in again.",
-        code: "SESSION_EXPIRED",
-      });
+      return sendError(
+        res,
+        "Refresh token is invalid or has expired. Please sign in again.",
+        SdkErrorCode.SESSION_EXPIRED,
+        401
+      );
     }
 
-    return res.status(200).json({
-      success: true,
-      data: {
-        accessToken: result.accessToken,
-        refreshToken: result.refreshToken,
-      },
+    return sendSuccess(res, {
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
     });
   } catch (error) {
-    console.error("[sdk/refresh]", error);
-    return res
-      .status(500)
-      .json({ success: false, error: "Something went wrong." });
+    return handleError(res, error, "[sdk/refresh]");
   }
 }
 
@@ -401,18 +412,24 @@ export async function getSession(req: Request, res: Response) {
   try {
     // requireEndUserAuth has already validated the token and attached endUser
     const endUser = req.endUser!;
+    const session = req.sdkApiKey
+      ? await prisma.session.findFirst({
+          where: {
+            token: req.headers.authorization?.slice(7) || "",
+          },
+        })
+      : null;
 
-    return res.status(200).json({
-      success: true,
-      data: {
-        user: safeUser(endUser),
-      },
+    const expiresAt = session?.expiresAt ?? new Date(Date.now() + 15 * 60 * 1000);
+
+    return sendSuccess(res, {
+      user: safeUser(endUser),
+      accessToken: req.headers.authorization?.slice(7) || "",
+      refreshToken: session?.refreshToken || "",
+      expiresAt: expiresAt.toISOString(),
     });
   } catch (error) {
-    console.error("[sdk/session]", error);
-    return res
-      .status(500)
-      .json({ success: false, error: "Something went wrong." });
+    return handleError(res, error, "[sdk/session]");
   }
 }
 
@@ -431,29 +448,33 @@ export async function verifyToken(req: Request, res: Response) {
     const { token } = req.body;
 
     if (!token) {
-      return res.status(400).json({
-        success: false,
-        error: "token is required.",
-      });
+      return sendError(
+        res,
+        "token is required.",
+        SdkErrorCode.BAD_REQUEST,
+        400
+      );
     }
 
     const payload = verifyAccessToken(token);
 
     if (!payload || !isEndUserPayload(payload)) {
-      return res.status(401).json({
-        success: false,
-        error: "Token is invalid or expired.",
-        valid: false,
-      });
+      return sendError(
+        res,
+        "Token is invalid or expired.",
+        SdkErrorCode.INVALID_TOKEN,
+        401
+      );
     }
 
     // Ensure the token belongs to this project
     if (payload.projectId !== req.sdkProject!.id) {
-      return res.status(401).json({
-        success: false,
-        error: "Token does not belong to this project.",
-        valid: false,
-      });
+      return sendError(
+        res,
+        "Token does not belong to this project.",
+        SdkErrorCode.FORBIDDEN,
+        401
+      );
     }
 
     // Fetch fresh user data — the token may be valid but the account banned
@@ -462,24 +483,19 @@ export async function verifyToken(req: Request, res: Response) {
     });
 
     if (!endUser || endUser.banned) {
-      return res.status(401).json({
-        success: false,
-        error: endUser?.banned ? "Account suspended." : "User not found.",
-        valid: false,
-      });
+      return sendError(
+        res,
+        endUser?.banned ? "Account suspended." : "User not found.",
+        SdkErrorCode.USER_BANNED,
+        401
+      );
     }
 
-    return res.status(200).json({
-      success: true,
-      data: {
-        valid: true,
-        user: safeUser(endUser),
-      },
+    return sendSuccess(res, {
+      valid: true,
+      user: safeUser(endUser),
     });
   } catch (error) {
-    console.error("[sdk/verify]", error);
-    return res
-      .status(500)
-      .json({ success: false, error: "Something went wrong." });
+    return handleError(res, error, "[sdk/verify]");
   }
 }

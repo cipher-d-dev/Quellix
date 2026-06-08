@@ -1,0 +1,68 @@
+import { useState, useCallback } from "react";
+import type { UseEmailVerificationReturn } from "@quellix/types";
+import { useQuellix } from "../context";
+
+export function useEmailVerification(): UseEmailVerificationReturn {
+  const { client, auth } = useQuellix();
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isSent, setIsSent] = useState(false);
+  const [isVerified, setIsVerified] = useState(auth.user?.emailVerified ?? false);
+
+  const sendCode = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const response = await client.sendEmailVerification();
+
+      if (!response.success) {
+        throw new Error(response.error || "Failed to send verification code");
+      }
+
+      setIsSent(true);
+    } catch (err) {
+      const errorMessage =
+        err instanceof Error ? err.message : "Unknown error";
+      setError(errorMessage);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [client]);
+
+  const verifyCode = useCallback(
+    async (code: string) => {
+      try {
+        setIsLoading(true);
+        setError(null);
+
+        const response = await client.confirmEmailVerification(code);
+
+        if (!response.success) {
+          throw new Error(response.error || "Failed to verify email");
+        }
+
+        setIsVerified(true);
+        setIsSent(false);
+      } catch (err) {
+        const errorMessage =
+          err instanceof Error ? err.message : "Unknown error";
+        setError(errorMessage);
+        throw err;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [client]
+  );
+
+  return {
+    sendCode,
+    verifyCode,
+    isLoading,
+    error,
+    isSent,
+    isVerified,
+  };
+}

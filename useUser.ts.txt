@@ -1,0 +1,90 @@
+import { useState, useCallback } from "react";
+import type { UseUserReturn, UpdateUserInput, QuelixUser } from "@quellix/types";
+import { useQuellix } from "../context";
+
+export function useUser(): UseUserReturn {
+  const { client, auth, setAuth } = useQuellix();
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const updateUser = useCallback(
+    async (input: UpdateUserInput): Promise<QuelixUser> => {
+      try {
+        setIsLoading(true);
+        setError(null);
+
+        const response = await client.updateMe(input);
+
+        if (!response.success || !response.data) {
+          throw new Error(response.error || "Update user failed");
+        }
+
+        const { user } = response.data;
+
+        // Update auth state
+        setAuth((prev) => ({
+          ...prev,
+          user,
+        }));
+
+        return user;
+      } catch (err) {
+        const errorMessage =
+          err instanceof Error ? err.message : "Unknown error";
+        setError(errorMessage);
+        throw err;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [client, setAuth]
+  );
+
+  const deleteAccount = useCallback(
+    async (password: string) => {
+      try {
+        setIsLoading(true);
+        setError(null);
+
+        const response = await client.deleteMe(password);
+
+        if (!response.success) {
+          throw new Error(response.error || "Delete account failed");
+        }
+
+        // Clear storage
+        const storage = (window as any).__quellix_storage || localStorage;
+        await storage.removeItem("qlx_access_token");
+        await storage.removeItem("qlx_refresh_token");
+
+        // Clear client tokens
+        client.clearTokens();
+
+        // Clear auth state
+        setAuth({
+          isAuthenticated: false,
+          isLoading: false,
+          user: null,
+          session: null,
+          error: null,
+        });
+      } catch (err) {
+        const errorMessage =
+          err instanceof Error ? err.message : "Unknown error";
+        setError(errorMessage);
+        throw err;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [client, setAuth]
+  );
+
+  return {
+    user: auth.user,
+    isLoading,
+    error,
+    updateUser,
+    deleteAccount,
+  };
+}

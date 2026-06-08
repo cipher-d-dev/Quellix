@@ -3,6 +3,8 @@ import argon2 from "argon2";
 import { prisma } from "../../config/db.ts";
 import { revokeAllSessions } from "../../utils/generateToken.ts";
 import { logAuthEvent } from "../../utils/logAuthEvent.ts";
+import { sendSuccess, sendError, handleError } from "../../utils/apiResponse.ts";
+import { SdkErrorCode } from "../../constants/errorCodes.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -58,15 +60,9 @@ function safeUser(u: {
 
 export async function getMe(req: Request, res: Response) {
   try {
-    return res.status(200).json({
-      success: true,
-      data: { user: safeUser(req.endUser!) },
-    });
+    return sendSuccess(res, { user: safeUser(req.endUser!) });
   } catch (error) {
-    console.error("[sdk/user/me GET]", error);
-    return res
-      .status(500)
-      .json({ success: false, error: "Something went wrong." });
+    return handleError(res, error, "[sdk/user/me GET]");
   }
 }
 
@@ -84,18 +80,20 @@ export async function updateMe(req: Request, res: Response) {
 
     // Reject attempts to change email or password through this endpoint
     if (req.body.email) {
-      return res.status(400).json({
-        success: false,
-        error:
-          "Email changes require a verification flow. Use /sdk/auth/email/change.",
-      });
+      return sendError(
+        res,
+        "Email changes require a verification flow. Use /sdk/auth/email/change.",
+        SdkErrorCode.BAD_REQUEST,
+        400
+      );
     }
     if (req.body.password || req.body.newPassword) {
-      return res.status(400).json({
-        success: false,
-        error:
-          "Password changes are not allowed through this endpoint. Use /sdk/auth/password/change.",
-      });
+      return sendError(
+        res,
+        "Password changes are not allowed through this endpoint. Use /sdk/auth/password/change.",
+        SdkErrorCode.BAD_REQUEST,
+        400
+      );
     }
 
     const updated = await prisma.endUser.update({
@@ -111,15 +109,9 @@ export async function updateMe(req: Request, res: Response) {
       },
     });
 
-    return res.status(200).json({
-      success: true,
-      data: { user: safeUser(updated) },
-    });
+    return sendSuccess(res, { user: safeUser(updated) });
   } catch (error) {
-    console.error("[sdk/user/me PATCH]", error);
-    return res
-      .status(500)
-      .json({ success: false, error: "Something went wrong." });
+    return handleError(res, error, "[sdk/user/me PATCH]");
   }
 }
 
@@ -134,26 +126,31 @@ export async function deleteMe(req: Request, res: Response) {
     const { password } = req.body;
 
     if (!password) {
-      return res.status(400).json({
-        success: false,
-        error: "Your current password is required to delete your account.",
-      });
+      return sendError(
+        res,
+        "Your current password is required to delete your account.",
+        SdkErrorCode.BAD_REQUEST,
+        400
+      );
     }
 
     if (!endUser.passwordHash) {
-      return res.status(400).json({
-        success: false,
-        error:
-          "Account deletion requires a password. This account uses social sign-in only.",
-      });
+      return sendError(
+        res,
+        "Account deletion requires a password. This account uses social sign-in only.",
+        SdkErrorCode.BAD_REQUEST,
+        400
+      );
     }
 
     const valid = await argon2.verify(endUser.passwordHash, password);
     if (!valid) {
-      return res.status(401).json({
-        success: false,
-        error: "Incorrect password.",
-      });
+      return sendError(
+        res,
+        "Incorrect password.",
+        SdkErrorCode.INVALID_PASSWORD,
+        401
+      );
     }
 
     logAuthEvent({
@@ -166,15 +163,9 @@ export async function deleteMe(req: Request, res: Response) {
     // Prisma cascade handles sessions, socialAccounts, etc.
     await prisma.endUser.delete({ where: { id: endUser.id } });
 
-    return res.status(200).json({
-      success: true,
-      message: "Account deleted.",
-    });
+    return sendSuccess(res, {});
   } catch (error) {
-    console.error("[sdk/user/me DELETE]", error);
-    return res
-      .status(500)
-      .json({ success: false, error: "Something went wrong." });
+    return handleError(res, error, "[sdk/user/me DELETE]");
   }
 }
 
@@ -211,19 +202,12 @@ export async function listUsers(req: Request, res: Response) {
     const page = hasNextPage ? users.slice(0, limit) : users;
     const nextCursor = hasNextPage ? page[page.length - 1].id : null;
 
-    return res.status(200).json({
-      success: true,
-      data: {
-        users: page.map(safeUser),
-        nextCursor,
-        hasNextPage,
-      },
+    return sendSuccess(res, {
+      users: page.map(safeUser),
+      ...(nextCursor && { nextCursor }),
     });
   } catch (error) {
-    console.error("[sdk/users GET]", error);
-    return res
-      .status(500)
-      .json({ success: false, error: "Something went wrong." });
+    return handleError(res, error, "[sdk/users GET]");
   }
 }
 
@@ -239,18 +223,17 @@ export async function getUser(req: Request, res: Response) {
     const endUser = await prisma.endUser.findUnique({ where: { id: id as string } });
 
     if (!endUser || endUser.projectId !== projectId) {
-      return res.status(404).json({ success: false, error: "User not found." });
+      return sendError(
+        res,
+        "User not found.",
+        SdkErrorCode.NOT_FOUND,
+        404
+      );
     }
 
-    return res.status(200).json({
-      success: true,
-      data: { user: safeUser(endUser) },
-    });
+    return sendSuccess(res, { user: safeUser(endUser) });
   } catch (error) {
-    console.error("[sdk/users/:id GET]", error);
-    return res
-      .status(500)
-      .json({ success: false, error: "Something went wrong." });
+    return handleError(res, error, "[sdk/users/:id GET]");
   }
 }
 
@@ -268,7 +251,12 @@ export async function updateUser(req: Request, res: Response) {
 
     const endUser = await prisma.endUser.findUnique({ where: { id: id as string } });
     if (!endUser || endUser.projectId !== projectId) {
-      return res.status(404).json({ success: false, error: "User not found." });
+      return sendError(
+        res,
+        "User not found.",
+        SdkErrorCode.NOT_FOUND,
+        404
+      );
     }
 
     const {
@@ -309,15 +297,9 @@ export async function updateUser(req: Request, res: Response) {
       },
     });
 
-    return res.status(200).json({
-      success: true,
-      data: { user: safeUser(updated) },
-    });
+    return sendSuccess(res, { user: safeUser(updated) });
   } catch (error) {
-    console.error("[sdk/users/:id PATCH]", error);
-    return res
-      .status(500)
-      .json({ success: false, error: "Something went wrong." });
+    return handleError(res, error, "[sdk/users/:id PATCH]");
   }
 }
 
@@ -332,7 +314,12 @@ export async function deleteUser(req: Request, res: Response) {
 
     const endUser = await prisma.endUser.findUnique({ where: { id: id as string } });
     if (!endUser || endUser.projectId !== projectId) {
-      return res.status(404).json({ success: false, error: "User not found." });
+      return sendError(
+        res,
+        "User not found.",
+        SdkErrorCode.NOT_FOUND,
+        404
+      );
     }
 
     logAuthEvent({
@@ -344,12 +331,9 @@ export async function deleteUser(req: Request, res: Response) {
 
     await prisma.endUser.delete({ where: { id: id as string } });
 
-    return res.status(200).json({ success: true, message: "User deleted." });
+    return sendSuccess(res, {});
   } catch (error) {
-    console.error("[sdk/users/:id DELETE]", error);
-    return res
-      .status(500)
-      .json({ success: false, error: "Something went wrong." });
+    return handleError(res, error, "[sdk/users/:id DELETE]");
   }
 }
 
@@ -365,7 +349,12 @@ export async function revokeUserSessions(req: Request, res: Response) {
 
     const endUser = await prisma.endUser.findUnique({ where: { id: id as string } });
     if (!endUser || endUser.projectId !== projectId) {
-      return res.status(404).json({ success: false, error: "User not found." });
+      return sendError(
+        res,
+        "User not found.",
+        SdkErrorCode.NOT_FOUND,
+        404
+      );
     }
 
     const { count } = await prisma.session.deleteMany({
@@ -380,15 +369,8 @@ export async function revokeUserSessions(req: Request, res: Response) {
       metadata: { sessionsRevoked: count },
     });
 
-    return res.status(200).json({
-      success: true,
-      message: `${count} session${count !== 1 ? "s" : ""} revoked.`,
-      data: { count },
-    });
+    return sendSuccess(res, {});
   } catch (error) {
-    console.error("[sdk/users/:id/sessions DELETE]", error);
-    return res
-      .status(500)
-      .json({ success: false, error: "Something went wrong." });
+    return handleError(res, error, "[sdk/users/:id/sessions DELETE]");
   }
 }

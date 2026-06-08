@@ -1,0 +1,40 @@
+import { useState, useCallback } from "react";
+import type { UseSignInReturn, SignInInput, QuelixUser } from "@quellix/types";
+import { useAuth } from "./useAuth";
+
+export function useSignIn(): UseSignInReturn {
+  const auth = useAuth();
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const signIn = useCallback(
+    async (input: SignInInput): Promise<QuelixUser> => {
+      try {
+        setIsLoading(true);
+        setError(null);
+
+        await auth.signIn(input);
+
+        if (!auth.user) {
+          throw new Error("User not available after sign in");
+        }
+
+        return auth.user;
+      } catch (err) {
+        const errorMessage =
+          err instanceof Error ? err.message : "Unknown error";
+        setError(errorMessage);
+        throw err;
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [auth]
+  );
+
+  return {
+    signIn,
+    isLoading: isLoading || auth.isLoading,
+    error: error || auth.error,
+  };
+}

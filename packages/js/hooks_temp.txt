@@ -1,0 +1,2 @@
+// This is a temporary helper file
+// The hooks will be created in the hooks/ directory
