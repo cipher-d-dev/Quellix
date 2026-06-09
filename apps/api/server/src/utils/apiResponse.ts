@@ -13,16 +13,19 @@ export type ApiResponse<T = unknown> = {
 };
 
 export class ApiError extends Error {
-  constructor(
-    public message: string,
-    public code: SdkErrorCode,
-    public statusCode: number = 400
-  ) {
+  public message: string;
+  public code: SdkErrorCode;
+  public statusCode: number;
+
+  constructor(message: string, code: SdkErrorCode, statusCode: number = 400) {
     super(message);
+
     this.name = "ApiError";
+    this.message = message;
+    this.code = code;
+    this.statusCode = statusCode;
   }
 }
-
 // ============================================================================
 // Response Helpers
 // ============================================================================
@@ -36,7 +39,7 @@ export class ApiError extends Error {
 export function sendSuccess<T>(
   res: Response,
   data: T,
-  statusCode: number = 200
+  statusCode: number = 200,
 ): Response {
   return res.status(statusCode).json({
     success: true,
@@ -54,7 +57,7 @@ export function sendError(
   res: Response,
   error: string,
   code?: SdkErrorCode,
-  statusCode: number = 400
+  statusCode: number = 400,
 ): Response {
   const body: ApiResponse = {
     success: false,
@@ -72,7 +75,7 @@ export function sendError(
 export function handleError(
   res: Response,
   error: unknown,
-  context: string = "request"
+  context: string = "request",
 ): Response {
   if (error instanceof ApiError) {
     return sendError(res, error.message, error.code, error.statusCode);
@@ -83,6 +86,6 @@ export function handleError(
     res,
     "Something went wrong.",
     SdkErrorCode.INTERNAL_ERROR,
-    500
+    500,
   );
 }

@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import jwt from "jsonwebtoken";
 import argon2 from "argon2";
 import { prisma } from "../../config/db.ts";
 import {
@@ -293,6 +294,28 @@ export async function signin(req: Request, res: Response) {
     }
 
     const meta = clientMeta(req);
+
+    // ── Check if 2FA is enabled ─────────────────────────────────────────────
+    if (endUser.twoFactorEnabled) {
+      const transientToken = jwt.sign(
+        { type: "2fa_challenge", id: endUser.id, projectId: project.id },
+        process.env.JWT_SECRET!,
+        { expiresIn: "5m" }
+      );
+      
+      await logAuthEvent({
+        projectId: project.id,
+        endUserId: endUser.id,
+        type: "signin_2fa_pending",
+        ...meta,
+      });
+
+      return sendSuccess(res, {
+        status: "2fa_pending",
+        2faToken: transientToken,
+      });
+    }
+
     const { accessToken, refreshToken } = await issueTokens(
       { type: "endUser", id: endUser.id, projectId: project.id },
       res,

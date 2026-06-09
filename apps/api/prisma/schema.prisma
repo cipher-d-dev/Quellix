@@ -109,6 +109,7 @@ model EndUser {
   profileImageUrl  String?   @map("profile_image_url")
   emailVerified    Boolean   @default(false) @map("email_verified")
   twoFactorEnabled Boolean   @default(false) @map("two_factor_enabled")
+  twoFactorSecret  String?   @map("two_factor_secret")
   banned           Boolean   @default(false)
   lastSignInAt     DateTime? @map("last_sign_in_at")
   // Arbitrary key-value data the developer wants to attach to their users.
@@ -316,6 +317,7 @@ model Organization {
   logoUrl   String?  @map("logo_url")
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
 
   project Project              @relation(fields: [projectId], references: [id], onDelete: Cascade)
   members OrganizationMember[]
@@ -389,6 +391,11 @@ model WebhookAttempt {
   response    String?
   succeededAt DateTime? @map("succeeded_at")
   failedAt    DateTime? @map("failed_at")
+  retryCount  Int       @default(0) @map("retry_count")
+  maxRetries  Int       @default(5) @map("max_retries")
+  nextRetryAt DateTime? @map("next_retry_at")
+  lastError   String?   @map("last_error")
+  status      String    @default("PENDING")
   createdAt   DateTime  @default(now()) @map("created_at")
 
   webhook Webhook @relation(fields: [webhookId], references: [id], onDelete: Cascade)
