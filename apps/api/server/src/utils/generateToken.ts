@@ -20,12 +20,6 @@ if (!ACCESS_TOKEN_SECRET) {
 // ---------------------------------------------------------------------------
 
 const IS_PROD = process.env.NODE_ENV === "production";
-
-console.log(
-  `[auth] Cookie config: NODE_ENV=${process.env.NODE_ENV} IS_PROD=${IS_PROD} ` +
-    `SameSite=${IS_PROD ? "none" : "lax"} Secure=${IS_PROD}`,
-);
-
 const SAME_SITE: "none" | "lax" = IS_PROD ? "none" : "lax";
 
 // ---------------------------------------------------------------------------
@@ -99,6 +93,16 @@ function generateRefreshToken(): string {
   return crypto.randomBytes(64).toString("hex");
 }
 
+/**
+ * Returns the SHA-256 hex digest of a token string.
+ * We store this in session.token instead of the raw JWT so that a database
+ * breach does not hand attackers valid bearer tokens.
+ * The original token is still returned to the caller — this is one-way.
+ */
+export function hashToken(token: string): string {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
 function ownerClause(owner: SessionOwner) {
   if (owner.type === "developer") {
     return { developerId: owner.id };
@@ -136,10 +140,15 @@ export async function issueTokens(
   const refreshToken = generateRefreshToken();
   const expiresAt = new Date(Date.now() + sessionMs);
 
+  // Store a SHA-256 hash of the access token — never the raw JWT.
+  // The raw token is returned to the caller but must never be persisted
+  // in plaintext; a DB breach must not yield valid bearer tokens.
+  const tokenHash = hashToken(accessToken);
+
   await prisma.session.create({
     data: {
       ...ownerClause(owner),
-      token: accessToken,
+      token: tokenHash,
       refreshToken,
       expiresAt,
       ipAddress: meta?.ipAddress ?? null,

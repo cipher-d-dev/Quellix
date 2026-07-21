@@ -8,6 +8,7 @@ import {
   rotateTokens,
   verifyAccessToken,
   isEndUserPayload,
+  hashToken,
 } from "../../utils/generateToken.ts";
 import { logAuthEvent } from "../../utils/logAuthEvent.ts";
 import {
@@ -435,20 +436,23 @@ export async function getSession(req: Request, res: Response) {
   try {
     // requireEndUserAuth has already validated the token and attached endUser
     const endUser = req.endUser!;
-    const session = req.sdkApiKey
-      ? await prisma.session.findFirst({
-          where: {
-            token: req.headers.authorization?.slice(7) || "",
-          },
-        })
-      : null;
+
+    // Look up the session by the hash of the access token.
+    // issueTokens() stores hashToken(accessToken) in session.token —
+    // never the raw JWT — so we must hash before querying.
+    const rawToken = req.headers.authorization?.slice(7) ?? "";
+    const tokenHash = hashToken(rawToken);
+
+    const session = await prisma.session.findFirst({
+      where: { token: tokenHash },
+    });
 
     const expiresAt = session?.expiresAt ?? new Date(Date.now() + 15 * 60 * 1000);
 
     return sendSuccess(res, {
       user: safeUser(endUser),
-      accessToken: req.headers.authorization?.slice(7) || "",
-      refreshToken: session?.refreshToken || "",
+      accessToken: rawToken,
+      refreshToken: session?.refreshToken ?? "",
       expiresAt: expiresAt.toISOString(),
     });
   } catch (error) {

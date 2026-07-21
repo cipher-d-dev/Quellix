@@ -8,6 +8,7 @@ import {
 import { logAuthEvent } from "../../utils/logAuthEvent.ts";
 import { sendSuccess, sendError, handleError } from "../../utils/apiResponse.ts";
 import { SdkErrorCode } from "../../constants/errorCodes.ts";
+import { hashToken } from "../../utils/generateToken.ts";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -52,12 +53,12 @@ export async function changePassword(req: Request, res: Response) {
     const { currentPassword, newPassword } = req.body;
 
     if (!currentPassword || !newPassword) {
-      return sendError(res, 400, "currentPassword and newPassword are required.", SdkErrorCode.BAD_REQUEST);
+      return sendError(res, "currentPassword and newPassword are required.", SdkErrorCode.BAD_REQUEST, 400);
     }
 
     // Guard: social-sign-in only accounts cannot use this endpoint
     if (!endUser.passwordHash) {
-      return sendError(res, 400, "This account was created with social sign-in and has no password. Use the forgot password flow to set one.", SdkErrorCode.BAD_REQUEST);
+      return sendError(res, "This account was created with social sign-in and has no password. Use the forgot password flow to set one.", SdkErrorCode.BAD_REQUEST, 400);
     }
 
     // Verify the current password
@@ -70,41 +71,41 @@ export async function changePassword(req: Request, res: Response) {
         ...clientMeta(req),
         metadata: { reason: "wrong_current_password" },
       });
-      return sendError(res, 401, "Current password is incorrect.", SdkErrorCode.INVALID_PASSWORD);
+      return sendError(res, "Current password is incorrect.", SdkErrorCode.INVALID_PASSWORD, 401);
     }
 
     // Prevent reuse of the same password
     const isSame = await argon2.verify(endUser.passwordHash, newPassword);
     if (isSame) {
-      return sendError(res, 400, "New password must be different from your current password.", SdkErrorCode.PASSWORD_MISMATCH);
+      return sendError(res, "New password must be different from your current password.", SdkErrorCode.PASSWORD_MISMATCH, 400);
     }
 
     // ── Password policy ────────────────────────────────────────────────────
     if (settings) {
       const min = settings.passwordMinLength;
       if (newPassword.length < min) {
-        return sendError(res, 400, `Password must be at least ${min} characters.`, SdkErrorCode.WEAK_PASSWORD);
+        return sendError(res, `Password must be at least ${min} characters.`, SdkErrorCode.WEAK_PASSWORD, 400);
       }
       if (settings.passwordRequireUppercase && !/[A-Z]/.test(newPassword)) {
-        return sendError(res, 400, "Password must contain at least one uppercase letter.", SdkErrorCode.WEAK_PASSWORD);
+        return sendError(res, "Password must contain at least one uppercase letter.", SdkErrorCode.WEAK_PASSWORD, 400);
       }
       if (settings.passwordRequireNumber && !/\d/.test(newPassword)) {
-        return sendError(res, 400, "Password must contain at least one number.", SdkErrorCode.WEAK_PASSWORD);
+        return sendError(res, "Password must contain at least one number.", SdkErrorCode.WEAK_PASSWORD, 400);
       }
       if (
         settings.passwordRequireSymbol &&
         !/[^A-Za-z0-9]/.test(newPassword)
       ) {
-        return sendError(res, 400, "Password must contain at least one special character.", SdkErrorCode.WEAK_PASSWORD);
+        return sendError(res, "Password must contain at least one special character.", SdkErrorCode.WEAK_PASSWORD, 400);
       }
     }
 
     const newHash = await argon2.hash(newPassword);
 
-    // Extract the current session's refresh token from the Authorization
-    // header so we can keep it alive while revoking everything else.
-    // The access token identifies the session via its token column.
-    const accessToken = req.headers.authorization!.slice(7);
+    // Hash the current access token to match what is stored in session.token
+    // (issueTokens stores hashToken(accessToken), never the raw JWT).
+    const rawToken = req.headers.authorization!.slice(7);
+    const currentTokenHash = hashToken(rawToken);
 
     await prisma.$transaction([
       prisma.endUser.update({
@@ -116,7 +117,7 @@ export async function changePassword(req: Request, res: Response) {
       prisma.session.deleteMany({
         where: {
           endUserId: endUser.id,
-          token: { not: accessToken },
+          token: { not: currentTokenHash },
         },
       }),
     ]);
@@ -130,8 +131,7 @@ export async function changePassword(req: Request, res: Response) {
 
     return sendSuccess(res, {});
   } catch (error) {
-    console.error("[sdk/password/change]", error);
-    return handleError(res, error);
+    return handleError(res, error, "[sdk/password/change]");
   }
 }
 
@@ -158,19 +158,19 @@ export async function requestEmailChange(req: Request, res: Response) {
     const { newEmail } = req.body;
 
     if (!newEmail) {
-      return sendError(res, 400, "newEmail is required.", SdkErrorCode.BAD_REQUEST);
+      return sendError(res, "newEmail is required.", SdkErrorCode.BAD_REQUEST, 400);
     }
 
     const normalizedNew = newEmail.trim().toLowerCase();
 
     // Must actually be different
     if (normalizedNew === endUser.email) {
-      return sendError(res, 400, "New email must be different from your current email.", SdkErrorCode.BAD_REQUEST);
+      return sendError(res, "New email must be different from your current email.", SdkErrorCode.BAD_REQUEST, 400);
     }
 
     // Basic format check
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedNew)) {
-      return sendError(res, 400, "Please provide a valid email address.", SdkErrorCode.BAD_REQUEST);
+      return sendError(res, "Please provide a valid email address.", SdkErrorCode.BAD_REQUEST, 400);
     }
 
     // Check the new email is not already taken by another user in this project
@@ -181,7 +181,7 @@ export async function requestEmailChange(req: Request, res: Response) {
       select: { id: true },
     });
     if (conflict) {
-      return sendError(res, 409, "That email address is already in use.", SdkErrorCode.EMAIL_ALREADY_EXISTS);
+      return sendError(res, "That email address is already in use.", SdkErrorCode.EMAIL_ALREADY_EXISTS, 409);
     }
 
     // Rate-limit: one request per 60 seconds
@@ -196,7 +196,7 @@ export async function requestEmailChange(req: Request, res: Response) {
       const secondsLeft = Math.ceil(
         (recent.createdAt.getTime() + 60_000 - Date.now()) / 1000,
       );
-      return sendError(res, 429, `Please wait ${secondsLeft} second${secondsLeft !== 1 ? "s" : ""} before requesting another code.`, SdkErrorCode.TOO_MANY_REQUESTS);
+      return sendError(res, `Please wait ${secondsLeft} second${secondsLeft !== 1 ? "s" : ""} before requesting another code.`, SdkErrorCode.TOO_MANY_REQUESTS, 429);
     }
 
     // Rotate: delete any previous EMAIL_CHANGE token for this user
@@ -238,8 +238,7 @@ export async function requestEmailChange(req: Request, res: Response) {
 
     return sendSuccess(res, {});
   } catch (error) {
-    console.error("[sdk/email/change]", error);
-    return handleError(res, error);
+    return handleError(res, error, "[sdk/email/change]");
   }
 }
 
@@ -264,12 +263,12 @@ export async function confirmEmailChange(req: Request, res: Response) {
     const { code } = req.body;
 
     if (!code) {
-      return sendError(res, 400, "code is required.", SdkErrorCode.BAD_REQUEST);
+      return sendError(res, "code is required.", SdkErrorCode.BAD_REQUEST, 400);
     }
 
     // Guard: no pending email means no change was requested
     if (!endUser.pendingEmail) {
-      return sendError(res, 400, "No email change is pending. Call /sdk/auth/email/change first.", SdkErrorCode.BAD_REQUEST);
+      return sendError(res, "No email change is pending. Call /sdk/auth/email/change first.", SdkErrorCode.BAD_REQUEST, 400);
     }
 
     const record = await prisma.verificationToken.findFirst({
@@ -281,7 +280,7 @@ export async function confirmEmailChange(req: Request, res: Response) {
     });
 
     if (!record) {
-      return sendError(res, 400, "Invalid verification code.", SdkErrorCode.INVALID_CODE);
+      return sendError(res, "Invalid verification code.", SdkErrorCode.INVALID_CODE, 400);
     }
 
     if (record.expiresAt < new Date()) {
@@ -291,7 +290,7 @@ export async function confirmEmailChange(req: Request, res: Response) {
         where: { id: endUser.id },
         data: { pendingEmail: null },
       });
-      return sendError(res, 400, "Verification code has expired. Request a new one.", SdkErrorCode.CODE_EXPIRED);
+      return sendError(res, "Verification code has expired. Request a new one.", SdkErrorCode.CODE_EXPIRED, 400);
     }
 
     // Double-check the new email is still available (race condition guard)
@@ -313,7 +312,7 @@ export async function confirmEmailChange(req: Request, res: Response) {
         }),
         prisma.verificationToken.delete({ where: { id: record.id } }),
       ]);
-      return sendError(res, 409, "That email address was taken while you were confirming. Please start the email change again.", SdkErrorCode.EMAIL_ALREADY_EXISTS);
+      return sendError(res, "That email address was taken while you were confirming. Please start the email change again.", SdkErrorCode.EMAIL_ALREADY_EXISTS, 409);
     }
 
     const newEmail = endUser.pendingEmail;
@@ -339,7 +338,6 @@ export async function confirmEmailChange(req: Request, res: Response) {
 
     return sendSuccess(res, {});
   } catch (error) {
-    console.error("[sdk/email/change/confirm]", error);
-    return handleError(res, error);
+    return handleError(res, error, "[sdk/email/change/confirm]");
   }
 }

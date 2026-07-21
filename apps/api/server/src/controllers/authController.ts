@@ -101,51 +101,48 @@ export const register = async (req: Request, res: Response) => {
     }
 
     if (username) {
-      // const usernameTaken = await prisma.developer.findUnique({
-      //   where: { username },
-      // });
-      // if (usernameTaken) {
-      //   const base = fullName?.trim() || email.split("@")[0];
-      //   const suggestion = `${base.toLowerCase().replace(/\s+/g, "")}${Math.floor(
-      //     Math.random() * 1000,
-      //   )}${randomBytes(2).toString("hex").slice(0, 3)}`;
-      //   return res.status(400).json({
-      //     success: false,
-      //     error: `@${username} is already taken — how about @${suggestion}?`,
-      //   });
-      // }
+      // ── Username uniqueness check ────────────────────────────────────────
+      // Must run before create(). The DB has a @unique constraint so skipping
+      // this would produce a confusing P2002 500 instead of a helpful 400.
+      const usernameTaken = await prisma.developer.findUnique({
+        where: { username },
+      });
 
-      let suggestion: string | null = null;
+      if (usernameTaken) {
+        // Generate a unique suggestion so the user isn't left stuck.
+        const base = (fullName?.trim() || email.split("@")[0])
+          .toLowerCase()
+          .replace(/\s+/g, "");
 
-      const base = (fullName?.trim() || email.split("@")[0])
-        .toLowerCase()
-        .replace(/\s+/g, "");
+        let suggestion: string | null = null;
+        let attempts = 0;
+        const MAX_ATTEMPTS = 10;
 
-      let attempts = 0;
-      const MAX_ATTEMPTS = 10;
+        while (attempts < MAX_ATTEMPTS) {
+          const candidate = `${base}${Math.floor(Math.random() * 1000)}${randomBytes(2)
+            .toString("hex")
+            .slice(0, 3)}`;
 
-      while (attempts < MAX_ATTEMPTS) {
-        const candidate = `${base}${Math.floor(Math.random() * 1000)}${randomBytes(
-          2,
-        )
-          .toString("hex")
-          .slice(0, 3)}`;
+          const exists = await prisma.developer.findUnique({
+            where: { username: candidate },
+          });
 
-        const exists = await prisma.developer.findUnique({
-          where: { username: candidate },
-        });
-
-        if (!exists) {
-          suggestion = candidate;
-          break;
+          if (!exists) {
+            suggestion = candidate;
+            break;
+          }
+          attempts++;
         }
 
-        attempts++;
-      }
+        // Extremely unlikely fallback
+        if (!suggestion) suggestion = `${base}${Date.now()}`;
 
-      // fallback (extremely rare)
-      if (!suggestion) {
-        suggestion = `${base}${Date.now()}`;
+        return res.status(400).json({
+          success: false,
+          code: "USERNAME_TAKEN",
+          error: `@${username} is already taken — how about @${suggestion}?`,
+          suggestion,
+        });
       }
     }
 

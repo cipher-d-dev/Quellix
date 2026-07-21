@@ -6,9 +6,13 @@ import apiKeyRoutes from "./routes/apiKeyRoutes.ts";
 import teamRoutes from "./routes/teamRoutes.ts";
 import dashboardRoutes from "./routes/dashboardRoutes.ts";
 import notificationRoutes from "./routes/notificationRoutes.ts";
+import webhookRoutes from "./routes/webhookRoutes.ts";
 import sdkAuthRoutes from "./routes/sdk/sdkAuthRoutes.ts";
 import sdkEmailRoutes from "./routes/sdk/sdkEmailRoutes.ts";
 import sdkUserRoutes from "./routes/sdk/sdkUserRoutes.ts";
+import sdk2faRoutes from "./routes/sdk/sdk2faRoutes.ts";
+import sdkOAuthRoutes from "./routes/sdk/sdkOAuthRoutes.ts";
+import sdkOrgRoutes from "./routes/sdk/sdkOrgRoutes.ts";
 import { baseHTMLResponse } from "./constants/responseConstants.ts";
 import { config } from "dotenv";
 import { connectDB, disconnectDB } from "./config/db.ts";
@@ -16,6 +20,7 @@ import cron from "node-cron";
 import { prisma } from "./config/db.ts";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import { csrfProtection } from "./middlewares/csrf.ts";
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -88,6 +93,13 @@ app.use("/api", (req, res, next) => {
   next();
 });
 
+// CSRF protection — double-submit cookie on all /api/* state-mutating routes.
+// GET/HEAD/OPTIONS are exempt (safe methods); all others require X-CSRF-Token
+// header to match the __qlx_csrf cookie value.
+// /sdk/* routes are intentionally excluded — they are key-authenticated and
+// used cross-origin by design.
+app.use("/api", csrfProtection);
+
 // ── Console API routes ─────────────────────────────────────────────────────
 
 app.use("/api/auth", authRoutes);
@@ -97,11 +109,17 @@ app.use("/api/api-key", apiKeyRoutes);
 app.use("/api/team", teamRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/notifications", notificationRoutes);
+// Webhook management — scoped to a project; projectId comes from the route param
+// e.g. GET /api/project/:projectId/webhooks
+app.use("/api/project/:projectId/webhooks", webhookRoutes);
 
-// ── SDK routes ────────────────────────────────────────────────────────────
+// ── SDK routes ─────────────────────────────────────────────────────────────
 app.use("/sdk/auth", sdkAuthRoutes);
 app.use("/sdk/auth", sdkEmailRoutes);
+app.use("/sdk/auth", sdk2faRoutes);
+app.use("/sdk/auth", sdkOAuthRoutes);
 app.use("/sdk/user", sdkUserRoutes);
+app.use("/sdk/organizations", sdkOrgRoutes);
 
 // ── Root ────────────────────────────────────────────────────────────────────
 
